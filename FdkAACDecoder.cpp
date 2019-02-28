@@ -78,7 +78,7 @@ int FdkAACDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize,
         {
             // 得到pts
             //printf("acc decode success");
-            g_sdlPlayer.playAudio((unsigned char*)&(pcm_buf[0]), validSize);
+            SDLPlayer::instance()->playAudio((unsigned char*)&(pcm_buf[0]), validSize);
         }
         else
         {

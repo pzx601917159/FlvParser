@@ -6,8 +6,6 @@
 #include "SDLPlayer.h"
 #include <thread>
 //全局播放器
-SDLPlayer g_sdlPlayer;
-
 using namespace std;
 
 void Process(fstream &fin, const char *filename);
@@ -47,7 +45,7 @@ int main(int argc, char *argv[])
 void Process(fstream &fin, const char *filename)
 {
 	FlvParser parser;
-    g_sdlPlayer.init();
+    SDLPlayer::instance()->init();
 
     // 4M的buf
 	int nBufSize = 4 * 1024 * 1024;

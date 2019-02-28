@@ -133,7 +133,7 @@ int MediaDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, 
 	fwrite(frameYUV_->data[2],1,y_size/4,fp_);  //V 
     */
     // 显示数据
-    g_sdlPlayer.play(frame_, pts);
+    SDLPlayer::instance()->play(frame_, pts);
     *width = codecCtx_->width;
     *height = codecCtx_->height;
     *pixFmt = codecCtx_->pix_fmt;

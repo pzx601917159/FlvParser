@@ -100,7 +100,7 @@ int OpenH264Decoder::decodeFrame(unsigned char* frameData, unsigned int frameSiz
             memcpy(buf + width*height, u_dst,uv_dst_width * uv_dst_height);
             memcpy(buf + width*height + width*height/4, v_dst,uv_dst_width * uv_dst_height);
 
-            g_sdlPlayer.play(buf);
+            SDLPlayer::instance()->play(buf);
         }
         else
         {

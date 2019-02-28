@@ -141,8 +141,7 @@ int AACDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, in
     swr_convert(au_convert_ctx_, &out_buf_, MAX_AUDIO_FRAME_SIZE, (const uint8_t**)frame_->data, frame_->nb_samples);
     int out_buf_size = av_samples_get_buffer_size(NULL,2, frame_->nb_samples, AV_SAMPLE_FMT_S16, 1);
     // 显示数据
-    //g_sdlPlayer.playAudio(frame_->data[0], frame_->linesize[0]);
-    g_sdlPlayer.playAudio(out_buf_, out_buf_size);
+    SDLPlayer::instance()->playAudio(out_buf_, out_buf_size);
     printf("audio line size:%d %d\n", frame_->linesize[0], frame_->linesize[1]);
     return 0;
 }
