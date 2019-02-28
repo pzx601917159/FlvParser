@@ -8,6 +8,7 @@
 #include <vector>
 #include <inttypes.h>
 #include <iostream>
+#include <map>
 
 class FlvParser;
 enum AVCPacketType
@@ -19,9 +20,9 @@ enum AVCPacketType
 enum FrameType
 {
     FRAME_TYPE_KEY = 1,     // AVC
-    FRAME_TYPE_INTER,   // AVC
-    FRAME_TYPE_DI,      // H.263
-    FRAME_TYPE_GK,      // SERVER
+    FRAME_TYPE_INTER,       // AVC
+    FRAME_TYPE_DI,          // H.263
+    FRAME_TYPE_GK,          // SERVER
     FRAME_TYPE_VIDEO_INFO
 };
 
@@ -33,7 +34,7 @@ enum CodecId
     CODEC_ID_VP6,
     CODEC_ID_VP6A,
     CODEC_ID_SCREEN2,
-    CODEC_ID_AVC
+    CODEC_ID_AVC            // h264
 };
 // tag类型
 enum TagType
@@ -97,12 +98,12 @@ struct BinaryData
 class TagHeader
 {
     public:
-    TagType tagType_;       // 1byte
-    uint32_t dataSize_;     // 3byte
-    uint32_t timeStamp_;    // 3byte
-    uint8_t timeStampEx_;  // 1byte
-    uint32_t streamId_;     // 3byte
-    uint32_t totalTimeStamp_;    // calc
+    TagType tagType_;           // 1byte
+    uint32_t dataSize_;         // 3byte
+    uint32_t timeStamp_;        // 3byte
+    uint8_t timeStampEx_;       // 1byte
+    uint32_t streamId_;         // 3byte
+    uint32_t totalTimeStamp_;   // calc
     // tagType不初始化
     TagHeader():dataSize_(0),timeStamp_(0),timeStampEx_(0),streamId_(0),totalTimeStamp_(0)
     {
@@ -121,11 +122,13 @@ class Tag
     }
     void init(TagHeader* header, unsigned char* data, uint32_t size);
     
-    TagHeader tagHeader_;   // tagheader
-    BinaryData tagHeaderData_; // tagheader数据
-    BinaryData tagData_;       // tagdata
-    BinaryData mediaData_;     // mediadata
-    uint32_t prevTagLen_;   // 上一个tag的长度
+    TagHeader tagHeader_;       // tagheader
+    int64_t dts_;               // dts
+    int64_t pts_;               // pts
+    BinaryData tagHeaderData_;  // tagheader数据
+    BinaryData tagData_;        // tagdata
+    BinaryData mediaData_;      // mediadata
+    uint32_t prevTagLen_;       // 上一个tag的长度
 };
 
 class VideoTag:public Tag
@@ -166,6 +169,10 @@ class ScriptTag:public Tag
 {
     public:
     ScriptTag(TagHeader* header, unsigned char* data, uint32_t size, FlvParser* parser);
+    // TODO解析metadata
+    int parseMetadata(char* data, uint32_t size);
+    typedef std::map<std::string, std::string> StringMap;
+    StringMap metadata_;
 };
 
 // flv文件头
@@ -187,6 +194,6 @@ class FlvFile
     public:
     private:
     FlvHeader* flvHeader_;          // 文件头
-    std::vector<Tag*> flvTags_;  // tag
+    std::vector<Tag*> flvTags_;     // tag
 };
 #endif // __FLVFILE_H__

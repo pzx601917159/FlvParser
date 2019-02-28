@@ -4,12 +4,25 @@
 #include <fstream>
 #include "FlvParser.h"
 #include "SDLPlayer.h"
-
+#include <thread>
+//全局播放器
 SDLPlayer g_sdlPlayer;
 
 using namespace std;
 
 void Process(fstream &fin, const char *filename);
+
+void videoThread(void* args)
+{
+    FlvParser* parser = (FlvParser*)args;
+    parser->parseH264();
+}
+
+void audioThread(void* args)
+{
+    FlvParser* parser = (FlvParser*)args;
+    parser->parseAAC();
+}
 
 int main(int argc, char *argv[])
 {
@@ -69,10 +82,13 @@ void Process(fstream &fin, const char *filename)
 	//dump into flv
 	//parser.DumpFlv(filename);
     //parser.parseH264();
-    parser.parseAAC();
+    //parser.parseAAC();
     //parser.PrintInfo();
+    std::thread threadAudio(audioThread, &parser);
+    std::thread threadVideo(videoThread, &parser);
+    threadAudio.join();
+    threadVideo.join();
 
 	delete []pBak;
 	//delete []pBuf;
-    getchar();
 }

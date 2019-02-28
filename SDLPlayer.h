@@ -17,12 +17,19 @@ extern "C"
 }
 class SDLPlayer
 {
-    public:
+    private:
     SDLPlayer();
     ~SDLPlayer();
+    public:
+    // thread safe in c++11
+    static SDLPlayer* instance()
+    {
+        static SDLPlayer player;
+        return &player;
+    }
     int init();
     int destory();
-    int play(AVFrame* frame);
+    int play(AVFrame* frame, int pts);
     int play(unsigned char* frame);
     int playAudio(unsigned char* data,uint32_t size);
     private:
@@ -51,6 +58,12 @@ class SDLPlayer
     static unsigned char* audioChrunk_;
     static unsigned char* audioPos_;
     bool init_;
+    static uint32_t serial_;
+    static double audioTime_;
+    static double videoTime_;
+    static uint64_t ptsDrift_;    
+    static double audioClock_;
+    static double videoClock_;
 };
 extern SDLPlayer g_sdlPlayer;
 #endif //__SDL_PLAYER_H__

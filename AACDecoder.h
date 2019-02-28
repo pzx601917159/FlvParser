@@ -11,7 +11,12 @@ class AACDecoder:public MediaDecoder
     public:
     AACDecoder();
     ~AACDecoder();
-    virtual int decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt);
+    virtual int init();
+    virtual int destory(){}
+    virtual int decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt, int pts);
+
+    struct SwrContext *au_convert_ctx_;
+    uint8_t* out_buf_;
 };
 
 #endif //__AACPARSER_H__

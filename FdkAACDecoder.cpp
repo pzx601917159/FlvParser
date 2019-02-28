@@ -24,7 +24,7 @@ int FdkAACDecoder::destory()
     return 0;
 }
 
-int FdkAACDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt)
+int FdkAACDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt, int pts)
 {
     std::vector<char> aac_buf(frameSize,0);
     memcpy(&aac_buf[0], frameData, frameSize);
@@ -45,7 +45,7 @@ int FdkAACDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize,
         //printf("decode aac frame\n");
         if (adts->syncword_0_to_8 != 0xff || adts->syncword_9_to_12 != 0xf) 
         {
-            printf("break\n");
+            //printf("break\n");
             break;
         }
   
@@ -53,7 +53,7 @@ int FdkAACDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize,
 
         if(pos_ + aac_frame_size > aacBuf_.size())
         {
-            printf("no enough audio\n");
+            //printf("no enough audio\n");
             break;
         }
         int leftSize = aac_frame_size;
@@ -73,15 +73,16 @@ int FdkAACDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize,
   
         int validSize = 0;
         ret = aacdec_decode_frame(&pcm_buf[0], pcm_buf.size(), &validSize);
-        printf("ret = %x\n",ret);
+        //printf("ret = %x\n",ret);
         if(ret == AAC_DEC_OK)
         {
-            printf("acc decode success\n");
+            // 得到pts
+            //printf("acc decode success");
             g_sdlPlayer.playAudio((unsigned char*)&(pcm_buf[0]), validSize);
         }
         else
         {
-            printf("aac decode fail\n");
+            //printf("aac decode fail\n");
         }
   
         if (ret == AAC_DEC_NOT_ENOUGH_BITS) {
@@ -131,7 +132,7 @@ int FdkAACDecoder::aacdec_fill(char *data, int nb_data, int *pnb_left)
 	AAC_DECODER_ERROR err = aacDecoder_Fill(_h.dec, &udata, &unb_data, &unb_left);
 	if (err != AAC_DEC_OK) 
     {
-        printf("aacDecoder fill:%x\n", err);
+        //printf("aacDecoder fill:%x\n", err);
 		return err;
 	}
 

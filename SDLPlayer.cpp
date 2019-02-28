@@ -51,20 +51,29 @@
 
 #include <stdio.h>
 #include "SDLPlayer.h"
+#include "clock.h"
+#include <time.h>
+#include <pthread.h>
 
 int SDLPlayer::thread_exit = 0;
 uint32_t SDLPlayer::audioLen_ = 0;
 unsigned char* SDLPlayer::audioChrunk_ = NULL;
 unsigned char* SDLPlayer::audioPos_ = NULL;
+uint32_t SDLPlayer::serial_ = 0;
+double SDLPlayer::videoTime_ = 0;
+double SDLPlayer::audioTime_ = 0;
+uint64_t SDLPlayer::ptsDrift_ = 0;
+double SDLPlayer::audioClock_ = 0;
+double SDLPlayer::videoClock_ = 0;
 
 SDLPlayer::SDLPlayer()
 {
     //YUV420P
     bpp_ = 12;
-    screenWidth_ = 320;
-    screenHeight_ = 240;
-    pixelWidth_ = 320;
-    pixelHeight_ = 240;
+    screenWidth_ = 640;
+    screenHeight_ = 360;
+    pixelWidth_ = 640;
+    pixelHeight_ = 360;
 
     audioSpec_.freq = 44100;
     audioSpec_.format = AUDIO_S16SYS;
@@ -73,24 +82,38 @@ SDLPlayer::SDLPlayer()
     audioSpec_.samples = 1024;
     // 音频的回调函数
     audioSpec_.callback = fillAudio;
+    // 用户传递的数据
+    //audioSpec_.userdata = ;
     init_ = false;
 }
 
+// 音频的回调函数
 void SDLPlayer::fillAudio(void* data, uint8_t* stream, int len)
 {
 	//SDL 2.0
 	SDL_memset(stream, 0, len);
 	if(audioLen_ == 0)
 			return; 
-	len=(len > audioLen_?audioLen_:len);
+	len = (len > audioLen_ ? audioLen_ : len);
 
-	SDL_MixAudio(stream,audioPos_,len,SDL_MIX_MAXVOLUME);
+	SDL_MixAudio(stream, audioPos_, len, SDL_MIX_MAXVOLUME);
 	audioPos_ += len; 
-	audioLen_ -= len; 
+	audioLen_ -= len;
+    ++serial_;
+
+    // 更新视频时间
+    // 当前的时间
+    if(ptsDrift_ == 0)
+    {
+        // 当前时间
+        ptsDrift_ = getTime();
+        printf("_______________ptsDrift_:%lf\n",ptsDrift_);
+    }
+    audioClock_ = (double)(serial_*4096) / (double)getBytesPersecond(44100, 2);
+    printf("audio serial_= %d time = %lf timesys:%ld len:%d threadid:%d audioLen_:%d\n",serial_, audioClock_, getTime(),len, pthread_self(), audioLen_);
 }
 
 SDLPlayer::~SDLPlayer()
-#include "SDLPlayer.h"
 {    
 }
 
@@ -175,15 +198,30 @@ int SDLPlayer::refresh_video(void *opaque)
 	return 0;
 }
 
-int SDLPlayer::play(AVFrame* frame)
+int SDLPlayer::play(AVFrame* frame, int pts)
 {
-    printf("%s\n",__FUNCTION__);
+    // 重点：计算当前正在播放的音频的pts,audioClock_包含了缓冲区的数据
+    // 当前播放的音频的时间为
+    int delay = pts * 1000 - audioClock_*1000000;
+    //int deley = getTime() - ptsDrift_;
+    if(delay > 0)
+    {
+        struct timespec time;
+        struct timespec remain;
+        time.tv_sec = delay / 1000000;
+        time.tv_nsec = (delay % 1000000) * 1000;
+        //printf("delay sec:%d delay.tv_nsec:%d\n",time.tv_sec, time.tv_nsec);
+        int ret = nanosleep(&time, &remain);
+        //printf("sleep ret:%d rem.tv_sec:%d rem.tv_nsec:%d\n",ret,remain.tv_sec, remain.tv_nsec);
+        //SDL_Delay(66);
+    }
+    printf("video pts:%d audioclock:%lf deleay:%d thread_id:%d\n", pts, audioClock_,delay, pthread_self());
     
     SDL_UpdateYUVTexture(sdlTexture_, &sdlRect_,
         frame->data[0], frame->linesize[0],
         frame->data[1], frame->linesize[1],
         frame->data[2], frame->linesize[2]);
-    printf(" %d %d %d\n", frame->linesize[0], frame->linesize[1], frame->linesize[2]);
+    //printf(" %d %d %d\n", frame->linesize[0], frame->linesize[1], frame->linesize[2]);
         
 
     //SDL_UpdateTexture( sdlTexture_, NULL, frame->data[0], frame->linesize[0]);
@@ -197,14 +235,12 @@ int SDLPlayer::play(AVFrame* frame)
     SDL_RenderCopy( sdlRenderer_, sdlTexture_, NULL, &sdlRect_);
     SDL_RenderPresent( sdlRenderer_ );
     //Delay 40ms
-    //SDL_Delay(40);
 	return 0;
 }
 
 int SDLPlayer::play(unsigned char* buf)
 {
-    printf("%s\n",__FUNCTION__);
-    
+    //printf("%s\n",__FUNCTION__); 
     //printf(" %d %d %d\n", frame->linesize[0], frame->linesize[1], frame->linesize[2]);
     SDL_UpdateTexture( sdlTexture_, NULL, buf, screenWidth_);
     //FIX: If window is resize

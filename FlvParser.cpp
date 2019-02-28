@@ -39,7 +39,7 @@ FlvParser::FlvParser()
     flvHeader_ = NULL;
     // h264解析器初始化
     h264Decoder_.init();
-    //sdlPlayer_.init();
+    aacParser_.init();
 }
 
 FlvParser::~FlvParser()
@@ -286,7 +286,7 @@ int FlvParser::parseH264()
             int width;
             int height;
             int pixFmt;
-            h264Decoder_.decodeFrame(tag->mediaData_.data_, tag->mediaData_.size_, &width, &height, &pixFmt);
+            h264Decoder_.decodeFrame(tag->mediaData_.data_, tag->mediaData_.size_, &width, &height, &pixFmt, tag->pts_);
             //printf("width:%d, height:%d, pixFmt:%d\n",width,height,pixFmt);
         }    
     }
@@ -302,8 +302,8 @@ int FlvParser::parseAAC()
             int width;
             int height;
             int pixFmt;
-            printf("======decode audio frame");
-            aacParser_.decodeFrame(tag->mediaData_.data_, tag->mediaData_.size_, &width, &height, &pixFmt);
+            //printf("======decode audio frame");
+            aacParser_.decodeFrame(tag->mediaData_.data_, tag->mediaData_.size_, &width, &height, &pixFmt, tag->pts_);
             //printf("width:%d, height:%d, pixFmt:%d\n",width,height,pixFmt);
         }    
     }
@@ -344,6 +344,7 @@ int FlvParser::StatVideo(Tag *pTag)
 	return 1;
 }
 
+// 文件头
 FlvHeader *FlvParser::CreateFlvHeader(unsigned char *pBuf)
 {
 	FlvHeader *pHeader = new FlvHeader;
@@ -355,7 +356,6 @@ FlvHeader *FlvParser::CreateFlvHeader(unsigned char *pBuf)
 	pHeader->data_ = new unsigned char[pHeader->headerSize_];
     //拷贝包头的数据
 	memcpy(pHeader->data_, pBuf, pHeader->headerSize_);
-
 	return pHeader;
 }
 

@@ -12,4 +12,6 @@ target_link_libraries(${PRJ_NAME}
     swscale
     SDL2 
     fdk-aac 
-    openh264)
+    openh264
+    pthread 
+    swresample)

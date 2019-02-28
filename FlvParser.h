@@ -73,8 +73,8 @@ public:
 	int nalUnitLength_;
     //OpenH264Decoder h264Decoder_;
     H264Decoder h264Decoder_;
-    //AACDecoder aacDecoder__;
-    FdkAACDecoder aacParser_;
+    AACDecoder aacParser_;
+    //FdkAACDecoder aacParser_;
 };
 
 #endif // FLVPARSER_H

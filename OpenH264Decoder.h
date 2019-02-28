@@ -15,7 +15,7 @@ class OpenH264Decoder:public MediaDecoder
     ~OpenH264Decoder();
     virtual int init();
     virtual int destory();
-    virtual int decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt);
+    virtual int decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt, int pts);
     private:
     ISVCDecoder* decoder_;
     SDecodingParam decParam_;

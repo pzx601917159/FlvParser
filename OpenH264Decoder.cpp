@@ -45,7 +45,7 @@ int OpenH264Decoder::destory()
     return 0;
 }
 
-int OpenH264Decoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt)
+int OpenH264Decoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt, int pts)
 {
     frameData = frameData + 4;
     frameSize -= 4;
@@ -56,7 +56,7 @@ int OpenH264Decoder::decodeFrame(unsigned char* frameData, unsigned int frameSiz
     {
         if(dstBufInfo.iBufferStatus == 1)
         {
-            printf("decode success\n");
+            printf("decode success pts:%ld\n", dstBufInfo.uiOutYuvTimeStamp);
             // int format = sDstBufInfo.UsrData.sSystemBuffer.iFormat;  // I420
             int width = dstBufInfo.UsrData.sSystemBuffer.iWidth;
             int height = dstBufInfo.UsrData.sSystemBuffer.iHeight;

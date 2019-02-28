@@ -12,6 +12,7 @@ MediaDecoder::MediaDecoder()
 {
     codecId_ = AV_CODEC_ID_H264;
     fp_ = fopen("test.yuv","w+");
+    codec_ = NULL;
 }
 
 MediaDecoder::~MediaDecoder()
@@ -72,9 +73,9 @@ int MediaDecoder::destory()
     return 0;
 }
 
-int MediaDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt)
+int MediaDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt, int pts)
 {
-    printf("framesize:%d\n",frameSize);
+    //printf("framesize:%d\n",frameSize);
     packet_.size = frameSize;
     packet_.data = frameData;
     int ret;
@@ -113,7 +114,14 @@ int MediaDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, 
     }
     else
     {
-        cout << "decode frame success" << endl;
+        if(frame_->pts ==  AV_NOPTS_VALUE)
+        {
+            //cout << "no pts value" << endl;
+        }
+        else
+        {
+            cout << "decode frame success pts:" << frame_->pts << endl;
+        }
     }
     /*
     sws_scale(img_convert_ctx_, (const unsigned char* const*)frame_->data, frame_->linesize, 0, codecCtx_->height, 
@@ -125,7 +133,7 @@ int MediaDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, 
 	fwrite(frameYUV_->data[2],1,y_size/4,fp_);  //V 
     */
     // 显示数据
-    g_sdlPlayer.play(frame_);
+    g_sdlPlayer.play(frame_, pts);
     *width = codecCtx_->width;
     *height = codecCtx_->height;
     *pixFmt = codecCtx_->pix_fmt;

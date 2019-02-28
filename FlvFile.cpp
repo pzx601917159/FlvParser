@@ -46,6 +46,8 @@ int AudioTag::parseAACTag(FlvParser *pParser)
 {
 	unsigned char *pd = tagData_.data_;
 	int nAACPacketType = pd[1];
+    dts_ = tagHeader_.totalTimeStamp_;
+    pts_ = dts_;
 
 	if (nAACPacketType == 0)
 	{
@@ -67,6 +69,9 @@ int AudioTag::parseAACTag(FlvParser *pParser)
 int AudioTag::parseAudioSpecificConfig(FlvParser *pParser, unsigned char *pTagData)
 {
 	unsigned char *pd = tagData_.data_;
+
+    dts_ = tagHeader_.totalTimeStamp_;
+    pts_ = dts_;
 
 	aacProfile_ = ((pd[2]&0xf8)>>3) - 1;
 	sampleRateIndex_ = ((pd[2]&0x07)<<1) | (pd[3]>>7);
@@ -127,6 +132,9 @@ int VideoTag::ParseH264Tag(FlvParser *pParser)
 	avcPacketType_ = (AVCPacketType)pd[1];
     // 占三个字节
 	compositionTime_ = ShowU24(pd + 2);
+
+    dts_ = tagHeader_.totalTimeStamp_;
+    pts_ = dts_ + compositionTime_;
 
 	if (avcPacketType_ == AVC_PACKET_TYPE_SEQUENCE_HEADER)
 	{
@@ -269,9 +277,32 @@ ScriptTag::ScriptTag(TagHeader *pHeader, unsigned char *pBuf, uint32_t nLeftLen,
         }
         if(type == AMF_DATA_TYPE_MIXEDARRAY)
         {
+            int arrLen = ShowU32(pd + i);
+            printf("arrlen :%d\n",arrLen);
             i += 4;
             key = amfGetString(pd+i,nLeftLen-1);
             std::cout << "key:" << key << std::endl;
         }
     }
 }
+
+// 解析metadata
+int ScriptTag::parseMetadata(char* data, uint32_t size)
+{
+    int i = 0;
+    int type = data[i++];
+    switch(type)
+    {
+        case AMF_DATA_TYPE_MIXEDARRAY:
+        {
+            //int arrLen = ShowU32(data + i);
+            //for(int j = 0; j < arrLen; ++j)
+            { 
+            }
+            break;
+        }
+    }
+    return 0;
+}
+
+
