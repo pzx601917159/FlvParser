@@ -38,8 +38,6 @@ FlvParser::FlvParser()
 {
     flvHeader_ = NULL;
     // h264解析器初始化
-    h264Decoder_.init();
-    aacParser_.init();
 }
 
 FlvParser::~FlvParser()
@@ -50,12 +48,70 @@ FlvParser::~FlvParser()
 		delete vpTag_[i];
 	}
 }
+
+int FlvParser::init(std::string fileName)
+{
+    fileName_ = fileName;
+    h264Decoder_.init();
+    aacDecoder_.init(); 
+}
+
+int FlvParser::destory()
+{
+    h264Decoder_.destory();
+    aacDecoder_.destory();
+}
+
 /*
  * 参数一：数据
  * 参数二：数据的大小
  * 参数三：已经解析的数据
  */
-int FlvParser::Parse(unsigned char *pBuf, int nBufSize, int &nUsedLen)
+int FlvParser::parseFlv()
+{
+    if(fileName_.empty())
+    {
+        return -1;
+    }
+	fs_.open(fileName_, ios_base::in | ios_base::binary);
+	if (!fs_ || !fs_.is_open() || !fs_.good())
+    {
+		return -1;
+    }
+
+    // 4M的buf
+	int nBufSize = 4 * 1024 * 1024;
+	int nFlvPos = 0;
+	unsigned char *pBuf;
+    // 只分配一次内存
+	pBuf = new unsigned char[nBufSize];
+
+	while (1)
+	{
+		int nReadNum = 0;
+		int nUsedLen = 0;
+        // 读数据
+		fs_.read((char *)pBuf + nFlvPos, nBufSize - nFlvPos);
+		nReadNum = fs_.gcount();
+		if (nReadNum == 0)
+			break;
+		nFlvPos += nReadNum;
+
+        parse(pBuf, nFlvPos, nUsedLen);
+		if (nFlvPos != nUsedLen)
+		{
+            memmove(pBuf, pBuf + nUsedLen, nFlvPos - nUsedLen);
+		}
+		nFlvPos -= nUsedLen;
+	}
+}
+
+/*
+ * 参数一：数据
+ * 参数二：数据的大小
+ * 参数三：已经解析的数据
+ */
+int FlvParser::parse(unsigned char *pBuf, int nBufSize, int &nUsedLen)
 {
 	int nOffset = 0;
     // 初始化flvheader
@@ -84,6 +140,7 @@ int FlvParser::Parse(unsigned char *pBuf, int nBufSize, int &nUsedLen)
 	}
 
 	nUsedLen = nOffset;
+    fs_.close();
 	return 0;
 }
 
@@ -91,8 +148,8 @@ int FlvParser::PrintInfo()
 {
 	Stat();
 
-	cout << "vnum: " << sStat_.nVideoNum_ << " , anum: " << sStat_.nAudioNum_ << " , mnum: " << sStat_.nMetaNum_ << endl;
-	cout << "maxTimeStamp: " << sStat_.nMaxTimeStamp_ << " ,nLengthSize: " << sStat_.nLengthSize_ << endl;
+	cout << "vnum: " << sStat_.videoNum_ << " , anum: " << sStat_.audioNum_ << " , mnum: " << sStat_.metaNum_ << endl;
+	cout << "maxTimeStamp: " << sStat_.maxTimeStamp_ << " ,nLengthSize: " << sStat_.lengthSize_ << endl;
     cout << "size:" << vpTag_.size() << endl;
 	return 1;
 }
@@ -277,7 +334,7 @@ int FlvParser::DumpFlv(const std::string &path)
 }
 
 //解析h264
-int FlvParser::parseH264()
+int FlvParser::decodeH264()
 {
     for(auto tag:vpTag_)
     {
@@ -287,13 +344,12 @@ int FlvParser::parseH264()
             int height;
             int pixFmt;
             h264Decoder_.decodeFrame(tag->mediaData_.data_, tag->mediaData_.size_, &width, &height, &pixFmt, tag->pts_);
-            //printf("width:%d, height:%d, pixFmt:%d\n",width,height,pixFmt);
         }    
     }
 }
 
 //解析aac
-int FlvParser::parseAAC()
+int FlvParser::decodeAAC()
 {
     for(auto tag:vpTag_)
     {
@@ -303,7 +359,7 @@ int FlvParser::parseAAC()
             int height;
             int pixFmt;
             //printf("======decode audio frame");
-            aacParser_.decodeFrame(tag->mediaData_.data_, tag->mediaData_.size_, &width, &height, &pixFmt, tag->pts_);
+            aacDecoder_.decodeFrame(tag->mediaData_.data_, tag->mediaData_.size_, &width, &height, &pixFmt, tag->pts_);
             //printf("width:%d, height:%d, pixFmt:%d\n",width,height,pixFmt);
         }    
     }
@@ -316,13 +372,13 @@ int FlvParser::Stat()
 		switch (vpTag_[i]->tagHeader_.tagType_)
 		{
 		case 0x08:
-			sStat_.nAudioNum_++;
+			sStat_.audioNum_++;
 			break;
 		case 0x09:
 			StatVideo(vpTag_[i]);
 			break;
 		case 0x12:
-			sStat_.nMetaNum_++;
+			sStat_.metaNum_++;
 			break;
 		default:
 			;
@@ -333,12 +389,12 @@ int FlvParser::Stat()
 
 int FlvParser::StatVideo(Tag *pTag)
 {
-	sStat_.nVideoNum_++;
-	sStat_.nMaxTimeStamp_ = pTag->tagHeader_.timeStamp_;
+	sStat_.videoNum_++;
+	sStat_.maxTimeStamp_ = pTag->tagHeader_.timeStamp_;
 
 	if (pTag->tagData_.data_[0] == 0x17 && pTag->tagData_.data_[1] == 0x00)
 	{
-		sStat_.nLengthSize_ = (pTag->tagData_.data_[9] & 0x03) + 1;
+		sStat_.lengthSize_ = (pTag->tagData_.data_[9] & 0x03) + 1;
 	}
 
 	return 1;
@@ -394,6 +450,7 @@ Tag *FlvParser::CreateTag(unsigned char *pBuf, int nLeftLen)
 		break;
     case TAG_TYPE_SCRIPT:
         pTag = new ScriptTag(&header, pBuf, nLeftLen, this);
+        metadata_ = (ScriptTag*)pTag;
         break;
 	default:
 		pTag = new Tag();

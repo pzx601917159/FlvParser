@@ -3,8 +3,8 @@
 	> Author: pzx
 	> Created Time: 2019年02月20日 星期三 15时06分05秒
 ************************************************************************/
-#ifndef __AACPARSER_H__
-#define __AACPARSER_H__
+#ifndef __AACDECODER_H__
+#define __AACDECODER_H__
 #include "MediaDecoder.h"
 class AACDecoder:public MediaDecoder
 {
@@ -19,4 +19,4 @@ class AACDecoder:public MediaDecoder
     uint8_t* out_buf_;
 };
 
-#endif //__AACPARSER_H__
+#endif //__AACDECODER_H__

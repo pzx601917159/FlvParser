@@ -135,6 +135,10 @@ int VideoTag::ParseH264Tag(FlvParser *pParser)
 
     dts_ = tagHeader_.totalTimeStamp_;
     pts_ = dts_ + compositionTime_;
+    if(frameType_ == FRAME_TYPE_KEY)
+    {
+        FlvParser::instance()->seekPos_.push_back(pts_);
+    }
 
 	if (avcPacketType_ == AVC_PACKET_TYPE_SEQUENCE_HEADER)
 	{
@@ -268,41 +272,109 @@ ScriptTag::ScriptTag(TagHeader *pHeader, unsigned char *pBuf, uint32_t nLeftLen,
     // 解析metadata
     if(key == "onMetaData")
     {
-        int type = pd[i++];
-        std::cout << "type" << type << std::endl;
-        if(type == AMF_DATA_TYPE_STRING)
-        {
-            key = amfGetString(pd + i, nLeftLen -i);
-            std::cout << "key:" << key << std::endl;
-        }
-        if(type == AMF_DATA_TYPE_MIXEDARRAY)
-        {
-            int arrLen = ShowU32(pd + i);
-            printf("arrlen :%d\n",arrLen);
-            i += 4;
-            key = amfGetString(pd+i,nLeftLen-1);
-            std::cout << "key:" << key << std::endl;
-        }
+        parseMetadata(pd + i, nLeftLen -i, "onMetadata");
     }
+    printf("Metdata:width:%lf, height:%lf\n",width_, height_);
 }
 
 // 解析metadata
-int ScriptTag::parseMetadata(char* data, uint32_t size)
+int ScriptTag::parseMetadata(unsigned char* data, uint32_t size, std::string key)
 {
+    std::string valueString;
+    double valueNum;
     int i = 0;
-    int type = data[i++];
-    switch(type)
+    int valueType = data[i++];
+    int valueLen = 0;
+    switch(valueType)
     {
         case AMF_DATA_TYPE_MIXEDARRAY:
         {
-            //int arrLen = ShowU32(data + i);
-            //for(int j = 0; j < arrLen; ++j)
-            { 
+            int arrLen = ShowU32(data + i);
+            i += 4;
+            for(int j = 0; j < arrLen; ++j)
+            {
+                if(j != 0)
+                {
+                    ++i;
+                }
+                key = amfGetString(data + i, size-i);
+                i += 2;
+                i += key.length();
+                valueLen = parseMetadata(data + i, size - i, key);
+                i += valueLen;
             }
             break;
         }
+        case AMF_DATA_TYPE_STRING:
+        {
+            valueString = amfGetString(data + i, size -i);
+            i += 2;
+            i += valueString.length();
+            valueLen = valueString.length() + 2;
+            break;
+        }
+        case AMF_DATA_TYPE_BOOL:
+        {
+            valueNum = data[i++];
+            valueLen = 1;
+            break;
+        }
+        case AMF_DATA_TYPE_NUMBER:
+        {
+            valueNum = ShowDouble(data + i);
+            cout << "value:" << valueNum << endl;
+            valueLen = 8;
+            i += 8;
+            break;
+        }
+        default:
+        break;
     }
-    return 0;
+    if(key == "duration")
+    {
+        duration_ = valueNum;
+    }
+    else if(key == "width")
+    {
+        width_ = valueNum;
+    }
+    else if(key == "height")
+    {
+        height_ = valueNum;
+    }
+    else if(key == "videodatarate")
+    {
+        videoDataRate_ = valueNum;
+    }
+    else if(key == "framerate")
+    {
+        framerate_ = valueNum;
+    }
+    else if(key == "videocodecid")
+    {
+        videoCodecId_ = valueNum;
+    }
+    else if(key == "audiosamplerate")
+    {
+        audioSampleRate_ = valueNum;
+    }
+    else if(key == "audiosamplesize")
+    {
+        audioSampleSize_ = valueNum;
+    }
+    else if(key == "stereo")
+    {
+        stereo_ = valueNum;
+    }
+    else if(key == "audiocodecid")
+    {
+        audioCodecId_ = valueNum;
+    }
+    else if(key == "filesize")
+    {
+        fileSize_ = valueNum;
+    }
+    return valueLen;
 }
 
 

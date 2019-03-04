@@ -170,9 +170,18 @@ class ScriptTag:public Tag
     public:
     ScriptTag(TagHeader* header, unsigned char* data, uint32_t size, FlvParser* parser);
     // TODO解析metadata
-    int parseMetadata(char* data, uint32_t size);
-    typedef std::map<std::string, std::string> StringMap;
-    StringMap metadata_;
+    int parseMetadata(unsigned char* data, uint32_t size, std::string key);
+    double duration_;
+    double width_;
+    double height_;
+    double videoDataRate_;
+    double framerate_;
+    double videoCodecId_;
+    double audioSampleRate_;
+    double audioSampleSize_;
+    bool stereo_;
+    double audioCodecId_;
+    double fileSize_;   // 文件大小byte
 };
 
 // flv文件头

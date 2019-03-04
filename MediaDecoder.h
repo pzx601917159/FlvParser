@@ -29,7 +29,6 @@ class MediaDecoder
     AVPacket packet_;
     AVCodecID codecId_;
     struct SwsContext *img_convert_ctx_;
-    FILE* fp_;
 };
 
 #endif //__BASEPARSER_H__

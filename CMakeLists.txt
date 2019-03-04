@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.11)
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(BIN_DIR ${CMAKE_CURRENT_BINARY_DIR})
-set(PRJ_NAME flvparser)
+set(PRJ_NAME sdlplayer)
 file(GLOB cppsrc "${SRC_DIR}/*.cpp")
-add_compile_options(-std=c++11)
+add_compile_options(-std=c++11 -g)
 add_executable(${PRJ_NAME} ${cppsrc})
 target_link_libraries(${PRJ_NAME}
     avcodec

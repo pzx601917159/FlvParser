@@ -6,21 +6,17 @@
 #include "MediaDecoder.h"
 #include <iostream>
 #include "SDLPlayer.h"
+#include "FlvParser.h"
 using namespace std;
 
 MediaDecoder::MediaDecoder()
 {
     codecId_ = AV_CODEC_ID_H264;
-    fp_ = fopen("test.yuv","w+");
     codec_ = NULL;
 }
 
 MediaDecoder::~MediaDecoder()
 {
-    if(fp_)
-    {
-        fclose(fp_);
-    }
 }
 
 int MediaDecoder::init()
@@ -133,9 +129,9 @@ int MediaDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, 
 	fwrite(frameYUV_->data[2],1,y_size/4,fp_);  //V 
     */
     // 显示数据
-    SDLPlayer::instance()->play(frame_, pts);
-    *width = codecCtx_->width;
-    *height = codecCtx_->height;
-    *pixFmt = codecCtx_->pix_fmt;
+    SDLPlayer::instance()->play(frame_, pts, codecCtx_->width, codecCtx_->height);
+    //*width = codecCtx_->width;
+    //*height = codecCtx_->height;
+    //*pixFmt = codecCtx_->pix_fmt;
     return 0;
 }

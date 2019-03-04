@@ -6,16 +6,28 @@
 #include "AACDecoder.h"
 #include "FlvFile.h"
 #include "FdkAACDecoder.h"
+#include <string>
+#include <fstream>
 using namespace std;
 static const unsigned int h264StartCode = 0x01000000;
 
 class FlvParser
 {
-public:
+private:
 	FlvParser();
 	virtual ~FlvParser();
+public:
+    static FlvParser* instance()
+    {
+        static FlvParser flvParser;
+        return &flvParser;
+    }
 
-	int Parse(unsigned char *pBuf, int nBufSize, int &nUsedLen);
+    int init(std::string fileName);
+    int destory();
+
+	int parseFlv();
+	int parse(unsigned char *pBuf, int nBufSize, int &nUsedLen);
 	int PrintInfo();
     // 保存h264
 	int DumpH264(const std::string &path);
@@ -24,21 +36,21 @@ public:
     // 保存flv
 	int DumpFlv(const std::string &path);
     // 解析h264
-    int parseH264();
+    int decodeH264();
     // 解析aac
-    int parseAAC();
+    int decodeAAC();
 
 private:
 
 	struct FlvStat
 	{
-		int nMetaNum_;
-        int nVideoNum_;
-        int nAudioNum_;
-		int nMaxTimeStamp_;
-		int nLengthSize_;
+		int metaNum_;
+        int videoNum_;
+        int audioNum_;
+		int maxTimeStamp_;
+		int lengthSize_;
 
-		FlvStat() : nMetaNum_(0), nVideoNum_(0), nAudioNum_(0), nMaxTimeStamp_(0), nLengthSize_(0)
+		FlvStat() : metaNum_(0), videoNum_(0), audioNum_(0), maxTimeStamp_(0), lengthSize_(0)
         {
         }
 		~FlvStat() 
@@ -60,21 +72,36 @@ private:
 	int IsUserDataTag(Tag *pTag);
 
 private:
-
 	FlvHeader* flvHeader_;
 	vector<Tag *> vpTag_;
 	FlvStat sStat_;
-    // 视频包
-    vector<AVFrame *> videoFrame_;
-    // 音频包
-    vector<AVFrame *> audioFrame_;
+    // 关键帧才能seek
 public:
+    vector<int> seekPos_;
 	// H.264
 	int nalUnitLength_;
-    //OpenH264Decoder h264Decoder_;
+#ifdef USE_FFMPEG
     H264Decoder h264Decoder_;
-    AACDecoder aacParser_;
-    //FdkAACDecoder aacParser_;
+    //FdkAACDecoder aacDecoder_;
+    AACDecoder aacDecoder_;
+    // 解码后的音频帧
+    std::vector<AVFrame*> videoFrames_;
+    // 解码后的视频帧
+    std::vector<AVFrame*> audioFrames_;
+#else
+    OpenH264Decoder h264Decoder_;
+    //H264Decoder h264Decoder_;
+    //AACDecoder aacDecoder_;
+    FdkAACDecoder aacDecoder_;
+    // 解码后的音频帧
+    std::vector<char*> videoFrames_;
+    // 解码后的视频帧
+    std::vector<char*> audioFrames_;
+#endif
+    // metadata
+    ScriptTag* metadata_;
+    fstream fs_;
+    std::string fileName_;
 };
 
 #endif // FLVPARSER_H

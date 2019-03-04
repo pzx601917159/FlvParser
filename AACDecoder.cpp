@@ -75,10 +75,6 @@ int AACDecoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, in
         printf("codec is null\n");
         return -1;
     }
-    else
-    {
-        printf("codec is inot null\n");
-    }
     printf("framesize:%d\n",frameSize);
     packet_.size = frameSize;
     packet_.data = frameData;

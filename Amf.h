@@ -27,6 +27,7 @@ enum AMFDataType
 inline std::string amfGetString(unsigned char* buf, uint32_t size)
 {
     int length = ShowU16(buf);
+    printf("amf_getstring length:%d\n",length);
     if(length > size)
     {
         return "";
@@ -34,5 +35,6 @@ inline std::string amfGetString(unsigned char* buf, uint32_t size)
     std::string str((char*)(buf+2), length);
     return str;
 }
+
 
 #endif //__AMF_H__

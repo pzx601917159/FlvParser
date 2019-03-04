@@ -5,10 +5,31 @@
 ************************************************************************/
 #ifndef __BYTEUTIL_H__
 #define __BYTEUTIL_H__
+#include <inttypes.h>
+#include <string.h>
+
+union int2double
+{
+    uint64_t i;
+    double d;
+};
 
 inline unsigned int ShowU32(unsigned char *pBuf) 
 {
     return (pBuf[0] << 24) | (pBuf[1] << 16) | (pBuf[2] << 8) | pBuf[3]; 
+}
+
+inline uint64_t ShowU64(unsigned char* pBuf)
+{
+    return (((uint64_t)ShowU32(pBuf)) << 32) | ShowU32(pBuf + 4);
+}
+
+inline double ShowDouble(unsigned char* pBuf)
+{
+    uint64_t num = ShowU64(pBuf);
+    union int2double v;
+    v.i = num;
+    return v.d;
 }
 
 inline unsigned int ShowU24(unsigned char *pBuf) 

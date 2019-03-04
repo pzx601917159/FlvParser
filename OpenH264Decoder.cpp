@@ -27,6 +27,7 @@ int OpenH264Decoder::init()
         decParam_.uiTargetDqLayer = UCHAR_MAX;
         decParam_.eEcActiveIdc = ERROR_CON_FRAME_COPY_CROSS_IDR;
         decParam_.sVideoProperty.eVideoBsType = VIDEO_BITSTREAM_DEFAULT;
+        decParam_.sVideoProperty.eVideoBsType = VIDEO_BITSTREAM_AVC;
         ret = decoder_->Initialize(&decParam_);
         if(ret == 0)
         {
@@ -47,20 +48,19 @@ int OpenH264Decoder::destory()
 
 int OpenH264Decoder::decodeFrame(unsigned char* frameData, unsigned int frameSize, int* width, int* height, int* pixFmt, int pts)
 {
-    frameData = frameData + 4;
-    frameSize -= 4;
-    printf("openh264 parse h264\n");
+    printf("decode video frame\n");
+    //frameData = frameData + 4;
+    //frameSize -= 4;
     unsigned char* dst[3] = {0};
     SBufferInfo dstBufInfo = {0};
-    if(decoder_->DecodeFrame2(frameData, frameSize, dst, &dstBufInfo))
+    if(!decoder_->DecodeFrame2(frameData, frameSize, dst, &dstBufInfo))
     {
         if(dstBufInfo.iBufferStatus == 1)
         {
-            printf("decode success pts:%ld\n", dstBufInfo.uiOutYuvTimeStamp);
+            printf("decode video frame success\n");
             // int format = sDstBufInfo.UsrData.sSystemBuffer.iFormat;  // I420
             int width = dstBufInfo.UsrData.sSystemBuffer.iWidth;
             int height = dstBufInfo.UsrData.sSystemBuffer.iHeight;
-            printf("width:%d height:%d\n",width, height);
             int y_src_width = dstBufInfo.UsrData.sSystemBuffer.iStride[0];  // y_dst_width + padding
             int uv_src_width = dstBufInfo.UsrData.sSystemBuffer.iStride[1]; // uv_dst_width + padding
             int y_dst_width = width;
@@ -92,24 +92,26 @@ int OpenH264Decoder::decodeFrame(unsigned char* frameData, unsigned int frameSiz
             }
             // yuv file:
             // y1 ... y921600, u1 ... u230400, v1 ... v230400
-            fwrite(y_dst, 1, y_dst_width * y_dst_height, fp_);
-            fwrite(u_dst, 1, uv_dst_width * uv_dst_height, fp_);
-            fwrite(v_dst, 1, uv_dst_width * uv_dst_height, fp_);
+            //fwrite(y_dst, 1, y_dst_width * y_dst_height, fp_);
+            //fwrite(u_dst, 1, uv_dst_width * uv_dst_height, fp_);
+            //fwrite(v_dst, 1, uv_dst_width * uv_dst_height, fp_);
             unsigned char* buf = (unsigned char*)malloc(width * height * 12 / 8);
-            memcpy(buf, y_dst,y_dst_width * y_dst_height);
-            memcpy(buf + width*height, u_dst,uv_dst_width * uv_dst_height);
-            memcpy(buf + width*height + width*height/4, v_dst,uv_dst_width * uv_dst_height);
 
-            SDLPlayer::instance()->play(buf);
+            memcpy(buf, y_dst,y_dst_width * y_dst_height); // DATA[0]
+            memcpy(buf + width*height, u_dst,uv_dst_width * uv_dst_height);//DATA[1]
+            memcpy(buf + width*height + width*height/4, v_dst,uv_dst_width * uv_dst_height);//DATA[2]
+
+            SDLPlayer::instance()->play(buf, pts, width, height);
         }
         else
         {
-            printf("decode failed:%d\n",dstBufInfo.iBufferStatus);
+            printf("decode video frame failed:%d\n",dstBufInfo.iBufferStatus);
         }
     }
     else
     {
-        printf("decode failed\n");
+        printf("decode video frame failed:%d\n",dstBufInfo.iBufferStatus);
     }
     return 0;
 }
+
