@@ -3,8 +3,8 @@
 	> Author: pzx
 	> Created Time: 2019年02月21日 星期四 11时51分56秒
 ************************************************************************/
-#ifndef __BYTEUTIL_H__
-#define __BYTEUTIL_H__
+#ifndef BYTEUTIL_H_
+#define BYTEUTIL_H_
 #include <inttypes.h>
 #include <string.h>
 
@@ -14,9 +14,9 @@ union int2double
     double d;
 };
 
-inline unsigned int ShowU32(unsigned char *pBuf) 
+inline unsigned int ShowU32(unsigned char *pBuf)
 {
-    return (pBuf[0] << 24) | (pBuf[1] << 16) | (pBuf[2] << 8) | pBuf[3]; 
+    return (pBuf[0] << 24) | (pBuf[1] << 16) | (pBuf[2] << 8) | pBuf[3];
 }
 
 inline uint64_t ShowU64(unsigned char* pBuf)
@@ -32,25 +32,25 @@ inline double ShowDouble(unsigned char* pBuf)
     return v.d;
 }
 
-inline unsigned int ShowU24(unsigned char *pBuf) 
+inline unsigned int ShowU24(unsigned char *pBuf)
 {
-    return (pBuf[0] << 16) | (pBuf[1] << 8) | (pBuf[2]); 
+    return (pBuf[0] << 16) | (pBuf[1] << 8) | (pBuf[2]);
 }
 
-inline unsigned int ShowU16(unsigned char *pBuf) 
+inline unsigned int ShowU16(unsigned char *pBuf)
 {
-    return (pBuf[0] << 8) | (pBuf[1]); 
+    return (pBuf[0] << 8) | (pBuf[1]);
 }
 
-inline unsigned int ShowU8(unsigned char *pBuf) 
+inline unsigned int ShowU8(unsigned char *pBuf)
 {
-    return (pBuf[0]); 
+    return (pBuf[0]);
 }
 
-inline void WriteU64(uint64_t & x, int length, int value)
+inline void WriteU64(uint64_t* x, int length, int value)
 {
-    uint64_t mask = 0xFFFFFFFFFFFFFFFF >> (64 - length);
-    x = (x << length) | ((uint64_t)value & mask);
+    uint64_t mask = (uint64_t)0xFFFFFFFFFFFFFFFF >> (64 - length);
+    *x = (*x << length) | ((uint64_t)value & mask);
 }
 
 inline unsigned int WriteU32(unsigned int n)
@@ -64,4 +64,9 @@ inline unsigned int WriteU32(unsigned int n)
     pp[3] = p[0];
     return nn;
 }
-#endif //__BYTEUTIL_H__
+struct BinaryData
+{
+    unsigned char* data_;
+    uint32_t size_;
+};
+#endif  // BYTEUTIL_H_

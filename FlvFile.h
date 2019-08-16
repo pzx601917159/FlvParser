@@ -1,16 +1,25 @@
 /*************************************************************************
-	> File Name: FlvFile.h
-	> Author: pzx
-	> Created Time: 2019年02月21日 星期四 09时58分50秒
+    > File Name: FlvFile.h
+    > Author: pzx
+    > Created Time: 2019年02月21日 星期四 09时58分50秒
 ************************************************************************/
-#ifndef __FLVFILE_H__
-#define __FLVFILE_H__
+#ifndef FLVFILE_H_
+#define FLVFILE_H_
 #include <vector>
-#include <inttypes.h>
+#include <cinttypes>
 #include <iostream>
 #include <map>
+#include <fstream>
+#include <string>
+#include "ByteUtil.h"
+#include "FdkAACDecoder.h"
+#include "OpenH264Decoder.h"
+#include "H264Decoder.h"
+#include "AACDecoder.h"
 
-class FlvParser;
+constexpr unsigned int h264StartCode = 0x01000000;
+
+class FlvFile;
 enum AVCPacketType
 {
     AVC_PACKET_TYPE_SEQUENCE_HEADER,
@@ -49,7 +58,7 @@ enum SoundFormat
     AUDIO_FORMAT_LINEAR_PCM_PE,  // linear PCM, platform endian
     AUDIO_FORMAT_ADPCM,
     AUDIO_FORMAT_MP3,
-    AUDIO_FORMAT_LINEAR_PCM_LE, // linear PCM, little endian
+    AUDIO_FORMAT_LINEAR_PCM_LE,  // linear PCM, little endian
     AUDIO_FORMAT_NELLY_16K,
     AUDIO_FORMAT_NELLY_8K,
     AUDIO_FORMAT_NELLY,
@@ -64,7 +73,7 @@ enum SoundFormat
 
 enum SoundRate
 {
-    SOUND_RATE_5P5K, // 5.5K
+    SOUND_RATE_5P5K,  // 5.5K
     SOUND_RATE_11K,
     SOUND_RATE_22K,
     SOUND_RATE_44K
@@ -88,11 +97,6 @@ enum AACPacketType
     AAC_PACKET_TYPE_AAC_RAW     // 原始数据
 };
 
-struct BinaryData
-{
-    unsigned char* data_;
-    uint32_t size_;
-};
 
 // tag头
 class TagHeader
@@ -105,7 +109,8 @@ class TagHeader
     uint32_t streamId_;         // 3byte
     uint32_t totalTimeStamp_;   // calc
     // tagType不初始化
-    TagHeader():dataSize_(0),timeStamp_(0),timeStampEx_(0),streamId_(0),totalTimeStamp_(0)
+    TagHeader():dataSize_(0), timeStamp_(0), timeStampEx_(0), streamId_(0),
+        totalTimeStamp_(0)
     {
     }
     ~TagHeader()
@@ -121,7 +126,7 @@ class Tag
     {
     }
     void init(TagHeader* header, unsigned char* data, uint32_t size);
-    
+
     TagHeader tagHeader_;       // tagheader
     int64_t dts_;               // dts
     int64_t pts_;               // pts
@@ -134,25 +139,28 @@ class Tag
 class VideoTag:public Tag
 {
     public:
-    VideoTag(TagHeader* header, unsigned char* data, uint32_t size, FlvParser* parser);
+    VideoTag(TagHeader* header, unsigned char* data, uint32_t size,
+            FlvFile* parser);
     FrameType frameType_;
     CodecId codecId_;
     // h264
-    AVCPacketType avcPacketType_; // 1byte
-    uint32_t compositionTime_;  // 3byte
+    AVCPacketType avcPacketType_;   // 1byte
+    uint32_t compositionTime_;      // 3byte
 
-	int ParseH264Tag(FlvParser *pParser);   // 解析h264tag
-	int ParseH264Configuration(FlvParser *pParser, unsigned char *pTagData);// 解析h264配置
-	int ParseNalu(FlvParser *pParser, unsigned char *pTagData); // 解析h264 NALU
+    int ParseH264Tag(FlvFile *pParser);   // 解析h264tag
+    // 解析h264配置
+    int ParseH264Configuration(FlvFile *pParser, unsigned char *pTagData);
+    int ParseNalu(FlvFile *pParser, unsigned char *pTagData);  // 解析h264 NALU
 };
 
 class AudioTag:public Tag
 {
     public:
-    AudioTag(TagHeader* header, unsigned char* data, uint32_t size, FlvParser* parser);
-    int parseAACTag(FlvParser* parser);
-	int parseAudioSpecificConfig(FlvParser *pParser, unsigned char *pTagData);
-	int parseRawAAC(FlvParser *pParser, unsigned char *pTagData);
+    AudioTag(TagHeader* header, unsigned char* data, uint32_t size,
+            FlvFile* parser);
+    int parseAACTag(FlvFile* parser);
+    int parseAudioSpecificConfig(FlvFile *pParser, unsigned char *pTagData);
+    int parseRawAAC(FlvFile *pParser, unsigned char *pTagData);
     SoundFormat soundFormat_;   // 4bit 音频格式
     SoundRate soundRate_;       // 2bit采样率
     SoundSize soundSize_;       // 1bit soundsize
@@ -168,8 +176,9 @@ class AudioTag:public Tag
 class ScriptTag:public Tag
 {
     public:
-    ScriptTag(TagHeader* header, unsigned char* data, uint32_t size, FlvParser* parser);
-    // TODO解析metadata
+    ScriptTag(TagHeader* header, unsigned char* data, uint32_t size,
+            FlvFile* parser);
+    // TODO 解析metadata
     int parseMetadata(unsigned char* data, uint32_t size, std::string key);
     double duration_;
     double width_;
@@ -189,20 +198,88 @@ class FlvHeader
 {
     public:
     char* signature_;    // "FLV" (0X46 0X4C 0X66) 3byte
-    uint8_t version_;    // 1byte 
-    uint8_t flags_;      // 1byte 前五位保留必须未0 第六位表示是否存在音频tag 第七位保留必须为0 第八为表示是否存在视频tag
+    uint8_t version_;    // 1byte
+    uint8_t flags_;      // 1byte 前五位保留必须未0
+                         //       第六位表示是否存在音频tag
+                         //       第七位保留必须为0
+                         //       第八为表示是否存在视频tag
     bool haveVideo_;
     bool haveAudio_;
-    uint32_t headerSize_;// header的总长度，版本1为9
+    uint32_t headerSize_;  // header的总长度，版本1为9
     unsigned char* data_;
 };
 
-// flv文件
+
 class FlvFile
 {
-    public:
+public:
+    FlvFile();
+    virtual ~FlvFile();
+
+    int init(const std::string& fileName);
+    int destory();
+
+    Tag* parseFlv();
+    Tag* parse(unsigned char *pBuf, int nBufSize, int *usedLen);
+    int PrintInfo();
+    // 保存h264
+    int DumpH264(const std::string &path);
+    // 保存aac
+    int DumpAAC(const std::string &path);
+    // 保存flv
+    int DumpFlv(const std::string &path);
+    // 解析h264
+    int decodeH264();
+    // 解析aac
+    int decodeAAC();
+
     private:
-    FlvHeader* flvHeader_;          // 文件头
-    std::vector<Tag*> flvTags_;     // tag
+    struct FlvStat
+    {
+        int metaNum_;
+        int videoNum_;
+        int audioNum_;
+        int maxTimeStamp_;
+        int lengthSize_;
+
+        FlvStat() : metaNum_(0), videoNum_(0), audioNum_(0), maxTimeStamp_(0),
+            lengthSize_(0)
+        {
+        }
+        ~FlvStat()
+        {
+        }
+    };
+
+private:
+    // 创建flvheader
+    FlvHeader *CreateFlvHeader(unsigned char *pBuf);
+    // 销毁flvheader
+    int DestroyFlvHeader(FlvHeader *pHeader);
+    // 创建tag
+    Tag *CreateTag(unsigned char *pBuf, int nLeftLen);
+    // 销毁tag
+    int DestroyTag(Tag *pTag);
+    int Stat();
+    int StatVideo(Tag *pTag);
+    int IsUserDataTag(Tag *pTag);
+
+private:
+    FlvHeader* flvHeader_;
+    std::vector<Tag *> vpTag_;
+    FlvStat sStat_;
+    // 关键帧才能seek
+public:
+    std::vector<int> seekPos_;
+    // H.264 TODO 在decoder层实现
+    int nalUnitLength_;
+    // metadata
+    ScriptTag* metadata_;
+    std::fstream fs_;
+    std::string fileName_;
+    // 未使用的buf
+    int unusedLen_;
+    unsigned char buf_[4*1024*1024];
 };
-#endif // __FLVFILE_H__
+
+#endif  // FLVFILE_H_

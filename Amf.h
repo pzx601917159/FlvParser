@@ -3,8 +3,8 @@
 	> Author: pzx
 	> Created Time: 2019年02月21日 星期四 17时32分12秒
 ************************************************************************/
-#ifndef __AMF_H__
-#define __AMF_H__
+#ifndef AMF_H_
+#define AMF_H_
 #include "ByteUtil.h"
 #include <string>
 enum AMFDataType
@@ -27,14 +27,13 @@ enum AMFDataType
 inline std::string amfGetString(unsigned char* buf, uint32_t size)
 {
     int length = ShowU16(buf);
-    printf("amf_getstring length:%d\n",length);
     if(length > size)
     {
         return "";
     }
-    std::string str((char*)(buf+2), length);
+    std::string str(reinterpret_cast<char*>(buf+2), length);
     return str;
 }
 
 
-#endif //__AMF_H__
+#endif  // AMF_H_
