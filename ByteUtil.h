@@ -7,6 +7,7 @@
 #define BYTEUTIL_H_
 #include <inttypes.h>
 #include <string.h>
+#include <string>
 
 union int2double
 {
@@ -69,4 +70,41 @@ struct BinaryData
     unsigned char* data_;
     uint32_t size_;
 };
+
+inline bool startWith(char* buf1, char* buf2)
+{
+    if(buf1 == NULL ||
+        buf2 == NULL)
+    {
+        return false;
+    }
+    int len = strlen(buf2);
+    if(len == 0)
+    {
+        return false;
+    }
+    if(strlen(buf1) < strlen(buf2))
+    {
+        return false;
+    }
+    for(int i = 0; i < len; ++i)
+    {
+        if(buf1[i] != buf2[i])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+inline std::string intToStr(uint32_t num)
+{
+    std::string str;
+    str.append(1, reinterpret_cast<char *>(&num)[0]);
+    str.append(1, reinterpret_cast<char *>(&num)[1]);
+    str.append(1, reinterpret_cast<char *>(&num)[2]);
+    str.append(1, reinterpret_cast<char *>(&num)[3]);
+    return str;
+}
+
 #endif  // BYTEUTIL_H_
