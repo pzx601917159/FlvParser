@@ -10,6 +10,7 @@
 #include <vector>
 #include <fstream>
 #include <string.h>
+#include <map>
 
 #define BOX_TYPE(c1, c2, c3, c4) \
     (((static_cast<uint32_t>(c1)) << 24) | \
@@ -27,9 +28,12 @@ enum BoxType
     MVHD = BOX_TYPE('m','v','h','d'),
     TRAK = BOX_TYPE('t','r','a','k'),
     TKHD = BOX_TYPE('t','k','h','d'),
-
-
 };
+
+static std::string uint32ToString(uint32_t boxType)
+{
+    return std::string(reinterpret_cast<char*>(&boxType), 4);
+}
 
 // box的头部
 struct BoxHeader
@@ -66,6 +70,7 @@ struct Mp4Box
     Mp4Box* createBox()
     {
     }
+
     BoxHeader header_;
     BoxBody body_;
     std::vector<uint8_t> data_;
@@ -73,7 +78,11 @@ struct Mp4Box
     {
         return (char*)data_.data();
     }
+    Mp4Box* parent_;    // 父节点
+    std::map<std::string, Mp4Box*> children_;
 };
+
+
 
 // file type
 struct FtypBox : public Mp4Box
@@ -90,6 +99,7 @@ struct FtypBox : public Mp4Box
         memcpy(&compatible_brands_, data() + 16, sizeof(major_band_));
     }
 };
+
 
 // full box
 struct MvhdBox:public Mp4Box
@@ -204,8 +214,10 @@ struct MdatBox: public Mp4Box
 class Mp4File
 {
     public:
-        Mp4File(){}
-        ~Mp4File(){}
+        Mp4File(){
+        }
+        ~Mp4File(){
+        }
 
         int init(const std::string file_name);
 
@@ -213,11 +225,8 @@ class Mp4File
         int parse();
     public:
         std::string file_name_;
-        std::vector<Mp4Box> boxes_;
         std::fstream fs_;
-        FtypBox* ftyp_box_;
-        MdatBox* mdat_box_;
-        MoovBox* moov_box_;
+        std::map<std::string, Mp4Box*> boxes_;
 };
 
 #endif  // MP4PARSER_H_
