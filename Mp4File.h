@@ -28,6 +28,21 @@ enum BoxType
     MVHD = BOX_TYPE('m','v','h','d'),
     TRAK = BOX_TYPE('t','r','a','k'),
     TKHD = BOX_TYPE('t','k','h','d'),
+    EDTS = BOX_TYPE('e','d','t','s'),
+    MDIA = BOX_TYPE('m','d','i','a'),
+    MDHD = BOX_TYPE('m','d','h','d'),
+    HDLR = BOX_TYPE('h','d','l','r'),
+    MINF = BOX_TYPE('m','i','n','f'),
+    VMHD = BOX_TYPE('v','m','h','d'),
+    DINF = BOX_TYPE('d','i','n','f'),
+    STBL = BOX_TYPE('s','t','b','l'),
+    STSD = BOX_TYPE('s','t','s','d'),
+    STTS = BOX_TYPE('s','t','t','s'),
+    CTSS = BOX_TYPE('c','t','s','s'),
+    STSS = BOX_TYPE('s','t','s','s'),
+    STSC = BOX_TYPE('s','t','s','c'),
+    STSZ = BOX_TYPE('s','t','s','z'),
+    STCO = BOX_TYPE('s','t','c','o')
 };
 
 static std::string uint32ToString(uint32_t boxType)
@@ -41,12 +56,16 @@ struct BoxHeader
     uint32_t size_; // 如果值为1则包含largesize
     uint32_t type_; // 根据type判断是不是full box
     uint64_t large_size_;
-    uint8_t version;    // fullbox才包含version和flags
-    uint32_t flasg; // 只用到了三个字节
     // 解析header
     void parse()
     {
     }
+};
+
+struct FullBoxHeader: public BoxHeader
+{
+    uint8_t version;    // fullbox才包含version和flags
+    uint32_t flasg; // 只用到了三个字节
 };
 
 // box的头部
@@ -55,8 +74,9 @@ class BoxBody
     std::vector<uint8_t> data;
 };
 
-struct Mp4Box
+class Mp4Box
 {
+    public:
     Mp4Box(){}
     void registerBox(BoxType box_type)
     {
@@ -71,8 +91,18 @@ struct Mp4Box
     {
     }
 
-    BoxHeader header_;
-    BoxBody body_;
+    virtual bool isFullBox()
+    {
+        return false;
+    }
+
+    virtual bool isContainerBox()
+    {
+        return false;
+    }
+
+    BoxHeader* header_;
+    BoxBody* body_;
     std::vector<uint8_t> data_;
     char* data()
     {
@@ -82,7 +112,21 @@ struct Mp4Box
     std::map<std::string, Mp4Box*> children_;
 };
 
+struct Mp4FullBox : public Mp4Box
+{
+    bool isFullBox() override
+    {
+        return true;
+    }
+};
 
+struct Mp4ContainerBox : public Mp4Box
+{
+    bool isContainerBox() override
+    {
+        return true;
+    }
+};
 
 // file type
 struct FtypBox : public Mp4Box
@@ -179,6 +223,33 @@ struct MinfBox:public Mp4Box
 {
 };
 
+
+// 其子box包括：
+// stsd：sample description box，样本的描述信息。
+// stts：time to sample box，sample解码时间的压缩表。
+// ctts：composition time to sample box，sample的CTS与DTS的时间差的压缩表。
+// stss：sync sample box，针对视频，关键帧的序号。
+// stsz/stz2：sample size box，每个sample的字节大小。
+// CMakeLists.txtstsc：sample to chunk box，sample-chunk映射表。
+// stco/co64：chunk offset box，chunk在文件中的偏移。
+struct StblBox:public Mp4ContainerBox
+{
+};
+
+struct SampleEntry
+{
+
+};
+
+// 存储了编码类型和初始化解码器需要的信息
+struct StsdBox: public Mp4FullBox
+{
+    int i;
+    uint32_t entry_count_; // entry的个数
+
+};
+
+
 // container box
 // 其子box的结构和种类还是比较复杂的。
 //“mdia”定义了track媒体类型以及sample数据，描述sample信息。
@@ -187,12 +258,33 @@ struct MinfBox:public Mp4Box
 // 一个Media Header Atom(mdhd)
 // 一个Handler Reference(hdlr)
 // 一个media information(minf)和User Data
-struct MediaBox
+struct MediaBox:public Mp4Box
 {  
 };
 
+// full box
+struct Vmhd:public Mp4FullBox
+{
+    // version = 0,1
+    uint16_t graphics_mode_ = 0;    // 视频合成模式，为0时拷贝原始图像，否则与opcolor进行合成。
+    uint16_t op_color_[3] = {0, 0, 0}; // 一组(red，green，blue)，graphics modes使用。
+};
+
+// full box
+struct Smhd:public Mp4FullBox
+{
+    // version = 0,0
+    uint16_t balance_ = 0;// 立体声平衡，[8.8] 格式值，一般为0表示中间，-1.0表示全部左声道，1.0表示全部右声道。
+    uint16_t reserved_ = 0;
+};
+
+struct Dinf:public Mp4ContainerBox
+{
+    
+};
+
 // container box
-struct TrackBox:public Mp4Box
+struct TrackBox:public Mp4ContainerBox
 {   
 };
 
@@ -227,6 +319,7 @@ class Mp4File
         std::string file_name_;
         std::fstream fs_;
         std::map<std::string, Mp4Box*> boxes_;
+        size_t file_size_;
 };
 
 #endif  // MP4PARSER_H_
