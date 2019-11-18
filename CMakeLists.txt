@@ -6,6 +6,7 @@ file(GLOB cppsrc "${SRC_DIR}/*.cpp")
 add_compile_options(-std=c++11 -g)
 add_executable(${PRJ_NAME} ${cppsrc})
 add_subdirectory(spdlog)
+include_directories("./spdlog/include")
 target_link_libraries(${PRJ_NAME}
     avcodec
     avformat
