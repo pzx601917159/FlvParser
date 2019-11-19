@@ -58,7 +58,7 @@ enum BoxType
     MOOF = BOX_TYPE('m','o','o','f'),
     MFRA = BOX_TYPE('m','f','r','a'),
     SKIP = BOX_TYPE('s','k','i','p'),
-
+    UUID = BOX_TYPE('u','u','i','d'),
 };
 
 static std::string uint32ToString(uint32_t boxType)
@@ -69,14 +69,40 @@ static std::string uint32ToString(uint32_t boxType)
 // 按照mp4 pdf文件时先
 struct Box
 {
-    Box(uint32_t box_type, uint8_t extend_type[16] = {})
+    Box(uint32_t box_type, uint32_t box_size, uint8_t extend_type[16] = {})
     {
         parent_ = nullptr;
+        size_ = box_size;
+        type_ = box_type;
+        parse_len_ = 0;
+    }
+    Box(uint32_t box_type, uint32_t box_size, std::vector<uint8_t>& data)
+    {
+        size_ = box_size;
+        type_ = box_type;
+        parse_len_ = 0;
+        parse(data);
+    }
+
+    // 解析并释放数据
+    void parse(std::vector<uint8_t>& data)
+    {
+        if(size_ == 1)
+        {
+            memcpy(&large_size_, data.data() + parse_len_, sizeof(large_size_));
+            parse_len_ += sizeof(large_size_);
+        }
+        if(type_ == BoxType::UUID)
+        {
+            memcpy(extend_type_, data.data() + parse_len_, sizeof(extend_type_));
+            parse_len_ += sizeof(extend_type_);
+        }
     }
     uint32_t size_;
     uint32_t type_;
     uint32_t large_size_;   // if size==1,large_size存在，if size == 0,box extends to end of file,只在mdat中可能用到
     uint8_t extend_type_[16];// if box_type == 'uuid'
+    uint32_t parse_len_;
     // 子box
     std::map<uint32_t, Box*> children_;
     // 父box
@@ -85,22 +111,30 @@ struct Box
 
 struct FullBox:public Box
 {
-    FullBox(uint32_t box_type, uint8_t v, int8_t f[3]):Box(box_type)
+    FullBox(uint32_t box_type, uint32_t box_size, uint8_t v, int8_t f[3]):Box(box_type, box_size)
     {
     }
-    FullBox(uint32_t box_type, uint32_t version_flags):Box(box_type)
+    FullBox(uint32_t box_type, uint32_t box_size, uint32_t version_flags):Box(box_type, box_size)
     {
         version_ = version_ >> 24;
         memcpy(flags_, (uint8_t*)&version_flags + 1, 3);
     }
+    FullBox(uint32_t box_type, uint32_t box_size, std::vector<uint8_t>& data):
+        Box(box_type, box_size, data)
+    {
+        version_ = data[parse_len_++];
+        memcpy(flags_, data.data() + parse_len_, sizeof(flags_));
+        parse_len_ += sizeof(flags_);
+    }
     uint8_t version_;
     int8_t flags_[3];
+    //virtual void parse()
 };
 
 // file type
 struct FtypBox : public Box
 {
-    FtypBox():Box(BoxType::FTYP)
+    FtypBox(uint32_t box_size):Box(BoxType::FTYP, box_size)
     {
     }
     uint32_t major_band_;
@@ -124,7 +158,7 @@ struct FtypBox : public Box
 // metadata container box
 struct MoovBox: public Box
 {
-    MoovBox():Box(BoxType::MOOV)
+    MoovBox(uint32_t box_size):Box(BoxType::MOOV, box_size)
     {
         // std::cout << "box type:" << box_type << std::endl;
     }
@@ -140,7 +174,7 @@ struct MdatBox: public Box
 // full box
 struct MvhdBox:public FullBox
 {
-    MvhdBox(uint8_t version, int8_t flags[3]):FullBox(BoxType::MVHD, version, flags)
+    MvhdBox(uint8_t version, uint32_t box_size, int8_t flags[3]):FullBox(BoxType::MVHD, box_size, version, flags)
     {
     }
     // 部分字段version=1为64位，version=1为32位
@@ -160,7 +194,7 @@ struct MvhdBox:public FullBox
 // container:moov box
 struct TrakBox:public Box
 {
-    TrakBox():Box(BoxType::TRAK)
+    TrakBox(uint32_t box_size):Box(BoxType::TRAK, box_size)
     {
     }
 };
@@ -169,7 +203,7 @@ struct TrakBox:public Box
 //flags : 24-bit整数，按位或操作结果值，预定义的值(0x000001 ，track_enabled，表示track是有效的）、(0x000002，track_in_movie，表示该track在播放
 struct TkhdBox : public Box
 {
-    TkhdBox():Box(BoxType::TKHD)
+    TkhdBox(uint32_t box_size):Box(BoxType::TKHD, box_size)
     {
     }
     // 部分字段version=1为64位，version=1为32位
@@ -190,14 +224,14 @@ struct TkhdBox : public Box
 
 struct TrefBox:public Box
 {
-    TrefBox():Box(BoxType::TREF)
+    TrefBox(uint32_t box_size):Box(BoxType::TREF, box_size)
     {
     }
 };
 
 struct TrefTypeBox:public Box
 {
-    TrefTypeBox(uint32_t reference_type):Box(reference_type)
+    TrefTypeBox(uint32_t reference_type, uint32_t box_size):Box(reference_type, box_size)
     {
     }
     uint32_t trak_ids_; // trak_ids_[]数组，这里怎么表示呢？
@@ -214,9 +248,8 @@ struct TrefTypeBox:public Box
 // container:trak
 struct MdiaBox:public Box
 {
-    MdiaBox():Box(BoxType::MDIA)
+    MdiaBox(uint32_t box_size):Box(BoxType::MDIA, box_size)
     {
-
     }
 };
 
@@ -228,11 +261,20 @@ struct MdiaBox:public Box
 // duration: track的时间长度。
 // language: 媒体语言码。最高位为0，后面15位为3个字符（见ISO 639-2/T标准中定义）。
 // container:mdia
-struct MdhdBox:public Box
+struct MdhdBox:public FullBox
 {
-    MdhdBox():Box(BoxType::MDHD)
+    MdhdBox(uint32_t box_size, std::vector<uint8_t>& box_data):
+        FullBox(BoxType::MDHD, box_size, box_data)
     {
-
+    }
+    MdhdBox(uint32_t box_size, uint8_t version, int8_t flags[3] = {0}):FullBox(BoxType::MDHD, box_size, version, flags)
+    {
+    }
+    // 解析ftype
+    void parse(std::vector<uint8_t>& box_data)
+    {
+        // seek需要timescale_
+        memcpy(&timescale_, box_data.data() + 16, sizeof(timescale_));
     }
     uint64_t creation_time_;
     uint64_t modification_time_;
@@ -258,7 +300,7 @@ struct MdhdBox:public Box
 // container:mdia or meta
 struct HdlrBox:public FullBox
 {
-    HdlrBox():FullBox(BoxType::HDLR, 0)
+    HdlrBox(uint32_t box_size):FullBox(BoxType::HDLR, box_size, 0)
     {
 
     }
@@ -277,7 +319,7 @@ struct HdlrBox:public FullBox
 // container:mdia
 struct MinfBox:public Box
 {
-    MinfBox():Box(BoxType::MINF)
+    MinfBox(uint32_t box_size):Box(BoxType::MINF, box_size)
     {
     }
 };
@@ -288,7 +330,7 @@ struct MinfBox:public Box
 struct VmhdBox:public FullBox
 {
     //  0 , 1
-    VmhdBox():FullBox(BoxType::VMHD, 1)
+    VmhdBox(uint32_t box_size):FullBox(BoxType::VMHD, box_size, 1)
     {
     }
     // version = 0,1
@@ -299,7 +341,7 @@ struct VmhdBox:public FullBox
 // full box
 struct SmhdBox:public FullBox
 {
-    SmhdBox():FullBox(BoxType::SMHD, 0)
+    SmhdBox(uint32_t box_size):FullBox(BoxType::SMHD, box_size, 0)
     {
 
     }
@@ -310,7 +352,7 @@ struct SmhdBox:public FullBox
 
 struct HmhdBox : public FullBox
 {
-    HmhdBox():FullBox(BoxType::HMHD, 0)
+    HmhdBox(uint32_t box_size):FullBox(BoxType::HMHD, box_size, 0)
     {
     }
     uint16_t max_pdu_size_;
@@ -332,7 +374,7 @@ struct HmhdBox : public FullBox
 // container:minf
 struct StblBox:public Box
 {
-    StblBox():Box(BoxType::STBL)
+    StblBox(uint32_t box_size):Box(BoxType::STBL, box_size)
     {
 
     }
@@ -347,7 +389,7 @@ struct Entry
 // container:stbl
 struct SttsBox:public FullBox
 {
-    SttsBox():FullBox(BoxType::STTS, 0)
+    SttsBox(uint32_t box_size):FullBox(BoxType::STTS, box_size, 0)
     {
 
     }
@@ -358,7 +400,7 @@ struct SttsBox:public FullBox
 // container:stbl
 struct Ctts:public FullBox
 {
-    Ctts():FullBox(BoxType::CTSS, 0)
+    Ctts(uint32_t box_size):FullBox(BoxType::CTSS, box_size, 0)
     {
     }
     uint32_t entry_count_;
@@ -367,7 +409,7 @@ struct Ctts:public FullBox
 
 struct SampleEntry : public Box
 {
-    SampleEntry(uint32_t format):Box(format)
+    SampleEntry(uint32_t format, uint32_t box_size):Box(format, box_size)
     {
     }
     uint8_t reserved_[6] = {0};
@@ -376,7 +418,7 @@ struct SampleEntry : public Box
 
 struct HintSampleEntry : public SampleEntry
 {
-    HintSampleEntry(uint32_t protocol) : SampleEntry(protocol)
+    HintSampleEntry(uint32_t protocol, uint32_t box_size) : SampleEntry(protocol, box_size)
     {
 
     }
@@ -385,7 +427,7 @@ struct HintSampleEntry : public SampleEntry
 
 struct VisaulSampleEntry: public SampleEntry
 {
-    VisaulSampleEntry(uint32_t codingname):SampleEntry(codingname)
+    VisaulSampleEntry(uint32_t codingname, uint32_t box_size):SampleEntry(codingname, box_size)
     {
 
     }
@@ -405,7 +447,7 @@ struct VisaulSampleEntry: public SampleEntry
 
 class AudioSampleEntry:public SampleEntry
 {
-    AudioSampleEntry(uint32_t codingname) : SampleEntry(codingname)
+    AudioSampleEntry(uint32_t codingname, uint32_t box_size) : SampleEntry(codingname, box_size)
     {
     }
     uint32_t reserved_[2] = {0};
@@ -421,7 +463,7 @@ class AudioSampleEntry:public SampleEntry
 // container:stbl
 struct StsdBox: public FullBox
 {
-    StsdBox():FullBox(BoxType::STSD, 0)
+    StsdBox(uint32_t box_size):FullBox(BoxType::STSD, box_size, 0)
     {
 
     }
@@ -435,7 +477,7 @@ struct StsdBox: public FullBox
 // container : stbl
 struct StszBox:public FullBox
 {
-    StszBox():FullBox(BoxType::STSZ, 0)
+    StszBox(uint32_t box_size):FullBox(BoxType::STSZ, box_size, 0)
     {
 
     }
@@ -452,7 +494,7 @@ struct StszBox:public FullBox
 // container : stbl
 struct Stz2Box:public FullBox
 {
-    Stz2Box():FullBox(BoxType::STZ2, 0)
+    Stz2Box(uint32_t box_size):FullBox(BoxType::STZ2, box_size, 0)
     {
 
     }
@@ -477,7 +519,7 @@ struct SampleToChunk
 // sample to chunk映射表
 struct StscBox:public FullBox
 {
-    StscBox():FullBox(BoxType::STSC, 0)
+    StscBox(uint32_t box_size):FullBox(BoxType::STSC, box_size, 0)
     {
     }
     uint32_t entry_count_;
@@ -492,7 +534,7 @@ struct StscBox:public FullBox
 // chunk offset box
 struct StcoBox:public FullBox
 {
-    StcoBox():FullBox(BoxType::STCO, 0)
+    StcoBox(uint32_t box_size):FullBox(BoxType::STCO, box_size, 0)
     {
 
     }
@@ -508,7 +550,7 @@ struct StcoBox:public FullBox
 // chunk offset box
 struct Co64Box:public FullBox
 {
-    Co64Box():FullBox(BoxType::CO64, 0)
+    Co64Box(uint32_t box_size):FullBox(BoxType::CO64, box_size, 0)
     {
 
     }
@@ -523,7 +565,7 @@ struct Co64Box:public FullBox
 // container:stbl
 struct StssBox:public FullBox
 {
-    StssBox():FullBox(BoxType::STSS, 0)
+    StssBox(uint32_t box_size):FullBox(BoxType::STSS, box_size, 0)
     {
 
     };
@@ -544,7 +586,7 @@ struct StshEntry
 // container:stbl
 struct StshBox:public FullBox
 {
-    StshBox():FullBox(BoxType::STSH, 0)
+    StshBox(uint32_t box_size):FullBox(BoxType::STSH, box_size, 0)
     {
 
     };
@@ -559,7 +601,7 @@ struct StshBox:public FullBox
 // container:stbl
 struct StdpBox:public FullBox
 {
-    StdpBox():FullBox(BoxType::STDP, 0)
+    StdpBox(uint32_t box_size):FullBox(BoxType::STDP, box_size, 0)
     {
 
     };
@@ -582,7 +624,7 @@ struct PaddingBits
 // container:stbl
 struct PadbBox:public FullBox
 {
-    PadbBox():FullBox(BoxType::PADB, 0)
+    PadbBox(uint32_t box_size):FullBox(BoxType::PADB, box_size, 0)
     {
 
     };
@@ -597,7 +639,7 @@ struct PadbBox:public FullBox
 // container：file or other box
 struct FreeBox: public Box
 {
-    FreeBox():Box(BoxType::FREE)
+    FreeBox(uint32_t box_size):Box(BoxType::FREE, box_size)
     {
     }
     uint8_t * data_;

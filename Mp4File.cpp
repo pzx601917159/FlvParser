@@ -102,7 +102,7 @@ int Mp4File::parse()
                     parent_ = nullptr;
                     read_box_data(box_size, data);
                     // 解析完header
-                    FtypBox* box = new FtypBox();
+                    FtypBox* box = new FtypBox(box_size);
                     // 解析box
                     box->parse(data);
                     LOG_DEBUG("major_band_:{}", intToStr(box->major_band_));
@@ -150,7 +150,7 @@ int Mp4File::parse()
                 case BoxType::MOOV:
                 {
                     parent_ = nullptr;
-                    MoovBox* moovBox = new MoovBox();
+                    MoovBox* moovBox = new MoovBox(box_size);
                     boxes_[box_type] = moovBox;
                     parent_ = moovBox;
                     // 解析完所有的数据
@@ -189,7 +189,7 @@ int Mp4File::parse()
                 case BoxType::HDLR:
                 {
                     read_box_data(box_size, data);
-                    HdlrBox* box = new HdlrBox();
+                    HdlrBox* box = new HdlrBox(box_size);
                     box->parse(data);
                     LOG_DEBUG("handler_type:{}", uint32ToString(box->handler_type_));
                 }
@@ -203,6 +203,15 @@ int Mp4File::parse()
                 }
                 case BoxType::STBL:
                 {
+                    break;
+                }
+                case BoxType::MDHD:
+                {
+                    read_box_data(box_size, data);
+                    MdhdBox* box = new MdhdBox(box_size, data[0]);
+                    data.erase(data.begin());
+                    box->parse(data);
+                    LOG_DEBUG("timescale:{}", box->timescale_);
                     break;
                 }
                 default:
