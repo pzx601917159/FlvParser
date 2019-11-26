@@ -13,6 +13,7 @@
 #include <map>
 
 #include "ByteUtil.h"
+#include "log.h"
 
 #define BOX_TYPE(c1, c2, c3, c4) \
     (((static_cast<uint32_t>(c1))) | \
@@ -122,9 +123,14 @@ struct FullBox:public Box
     FullBox(uint32_t box_type, uint32_t box_size, std::vector<uint8_t>& data):
         Box(box_type, box_size, data)
     {
+        parse(data);
+    }
+    void parse(std::vector<uint8_t>& data)
+    {
         version_ = data[parse_len_++];
         memcpy(flags_, data.data() + parse_len_, sizeof(flags_));
         parse_len_ += sizeof(flags_);
+        LOG_DEBUG("version:{} flags:{}", version_, flags_);
     }
     uint8_t version_;
     int8_t flags_[3];
@@ -263,23 +269,61 @@ struct MdiaBox:public Box
 // container:mdia
 struct MdhdBox:public FullBox
 {
-    MdhdBox(uint32_t box_size, std::vector<uint8_t>& box_data):
-        FullBox(BoxType::MDHD, box_size, box_data)
+    MdhdBox(uint32_t box_size, std::vector<uint8_t>& data):
+        FullBox(BoxType::MDHD, box_size, data)
     {
+        parse(data);
     }
     MdhdBox(uint32_t box_size, uint8_t version, int8_t flags[3] = {0}):FullBox(BoxType::MDHD, box_size, version, flags)
     {
     }
     // 解析ftype
-    void parse(std::vector<uint8_t>& box_data)
+    void parse(std::vector<uint8_t>& data)
     {
-        // seek需要timescale_
-        memcpy(&timescale_, box_data.data() + 16, sizeof(timescale_));
+        if(version_ == 1)
+        {
+            // seek需要timescale_
+            memcpy(&creation_time_, data.data() + parse_len_, sizeof(creation_time_));
+            parse_len_ += sizeof(creation_time_);
+            memcpy(&modification_time_, data.data() + parse_len_, sizeof(modification_time_));
+            parse_len_ += sizeof(modification_time_);
+            memcpy(&timescale_, data.data() + parse_len_, sizeof(timescale_));
+            parse_len_ += sizeof(timescale_);
+            memcpy(&duration_, data.data() + parse_len_, sizeof(duration_));
+            parse_len_ += sizeof(duration_);
+        }
+        // 没有其他值
+        else // if(version_ == 0)
+        {
+            // seek需要timescale_
+            creation_time_ = ShowU32(data.data() + parse_len_);
+            parse_len_ += 4;
+            modification_time_ = ShowU32(data.data() + parse_len_);
+            parse_len_ += 4;
+            timescale_ = ShowU32(data.data() + parse_len_);
+            parse_len_ += sizeof(timescale_);
+            duration_ = ShowU32(data.data() + parse_len_);
+            parse_len_ += 4;
+        }
+        memcpy(&language_, data.data() + parse_len_, sizeof(language_));
+        parse_len_ += sizeof(language_);
+        memcpy(&pre_defined_, data.data() + parse_len_, sizeof(pre_defined_));
+        parse_len_ += sizeof(pre_defined_);
+        LOG_DEBUG("create_time:{} modification_time:{} timescale:{} duration:{}", creation_time_, modification_time_, timescale_, duration_);
+        LOG_DEBUG("real duration:{}", duration_/timescale_);
     }
+    // version == 1
     uint64_t creation_time_;
     uint64_t modification_time_;
-    uint64_t timescale_;
+    uint32_t timescale_;
     uint64_t duration_;
+    /*
+     * version ==0
+     * uint32_t creation_time_
+     * uint32_t modification_time_
+     * uint32_t timescale_
+     * uint32_t duration_
+     */
     // bit(1) pad = 0;
     // char pad_ = 0;
     // unsigned int(5)[3] language; // ISO-639-2/T language code
@@ -391,10 +435,26 @@ struct SttsBox:public FullBox
 {
     SttsBox(uint32_t box_size):FullBox(BoxType::STTS, box_size, 0)
     {
-
+    }
+    SttsBox(uint32_t box_size, std::vector<uint8_t> data): FullBox(BoxType::STTS, box_size, data)
+    {
+        //entry_count_ = ShowU32(data.data() + parse_len_);
+        //LOG_DEBUG("stts entry_count_:{}", entry_count_);
+        parse_len_ += 4;
+        /*
+        for(auto i = 0; i < entry_count_; ++i)
+        {
+            Entry* entry = new Entry();
+            entry->sample_count_ = ShowU32(data.data() + parse_len_);
+            parse_len_ += 4;
+            entry->sample_delta_ = ShowU32(data.data() + parse_len_);
+            parse_len_ += 4;
+            entrys_.push_back(entry);
+        }
+        */
     }
     uint32_t entry_count_;
-    std::vector<Entry> entrys_;
+    std::vector<Entry*> entrys_;
 };
 
 // container:stbl
@@ -567,8 +627,15 @@ struct StssBox:public FullBox
 {
     StssBox(uint32_t box_size):FullBox(BoxType::STSS, box_size, 0)
     {
-
     };
+    StssBox(uint32_t box_size, std::vector<uint8_t> data): FullBox(BoxType::STSS, box_size, data)
+    {
+        entry_count_ = ShowU32(data.data() + parse_len_);
+        parse_len_ += 4;
+        for(auto i = 0; i < entry_count_; ++i)
+        { 
+        }
+    }
     uint32_t entry_count_;
     // for(i =1; i<= entry_count_; ++i)
     // {

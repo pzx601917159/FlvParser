@@ -69,6 +69,7 @@ bool Mp4File::read_box_data(uint32_t box_size, std::vector<uint8_t>& data)
     {
         return false;
     }
+    LOG_DEBUG("read success, box_size:{} data size:{}", box_size, data.size());
     return true;
 }
 
@@ -80,6 +81,7 @@ int Mp4File::parse()
     uint32_t box_size = 0;
     uint32_t box_type = 0;
     int depth = 0;
+    bool read_res = true;
     Box* parent_ = nullptr;
     std::vector<uint8_t> data;
     while(!fs_.eof())
@@ -205,13 +207,18 @@ int Mp4File::parse()
                 {
                     break;
                 }
+                // decoding time to sample
+                case BoxType::STTS:
+                {
+                    read_res = read_box_data(box_size, data);
+                    LOG_DEBUG("read res:{} stts box_size:{} data size:{}", read_res, box_size, data.size());
+                    //SttsBox* box = new SttsBox(box_size, data);
+                    break;
+                }
                 case BoxType::MDHD:
                 {
                     read_box_data(box_size, data);
-                    MdhdBox* box = new MdhdBox(box_size, data[0]);
-                    data.erase(data.begin());
-                    box->parse(data);
-                    LOG_DEBUG("timescale:{}", box->timescale_);
+                    MdhdBox* box = new MdhdBox(box_size, data);
                     break;
                 }
                 default:
