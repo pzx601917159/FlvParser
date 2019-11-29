@@ -77,12 +77,42 @@ struct Box
         type_ = box_type;
         parse_len_ = 0;
     }
+
     Box(uint32_t box_type, uint32_t box_size, std::vector<uint8_t>& data)
     {
         size_ = box_size;
         type_ = box_type;
         parse_len_ = 0;
         parse(data);
+    }
+
+    void setParent(Box* parent)
+    {
+        parent_ = parent;
+    }
+    
+    uint8_t parseU8(std::vector<uint8_t>& data)
+    {
+        parse_len_ += sizeof(uint8_t);
+        return ShowU8(data.data() + parse_len_);
+    }
+
+    uint16_t parseU16(std::vector<uint8_t>& data)
+    {
+        parse_len_ += sizeof(uint16_t);
+        return ShowU16(data.data() + parse_len_);
+    }
+
+    uint32_t parseU32(std::vector<uint8_t>& data)
+    {
+        parse_len_ += sizeof(uint32_t);
+        return ShowU32(data.data() + parse_len_);
+    }
+
+    uint64_t parseU64(std::vector<uint8_t>& data)
+    {
+        parse_len_ += sizeof(uint64_t);
+        return ShowU64(data.data() + parse_len_);
     }
 
     // 解析并释放数据
@@ -140,17 +170,13 @@ struct FullBox:public Box
 // file type
 struct FtypBox : public Box
 {
-    FtypBox(uint32_t box_size):Box(BoxType::FTYP, box_size)
+    FtypBox(uint32_t box_size, std::vector<uint8_t>& data):Box(BoxType::FTYP, box_size, data)
     {
+        parse(data);
     }
     uint32_t major_band_;
     uint32_t minor_version_;
     uint32_t compatible_brands_;
-
-    void set_data()
-    {
-
-    }
 
     // 解析ftype
     void parse(std::vector<uint8_t>& box_data)
@@ -183,6 +209,26 @@ struct MvhdBox:public FullBox
     MvhdBox(uint8_t version, uint32_t box_size, int8_t flags[3]):FullBox(BoxType::MVHD, box_size, version, flags)
     {
     }
+
+    MvhdBox(uint32_t box_size, std::vector<uint8_t>& data):FullBox(BoxType::MVHD, box_size, data)
+    {
+        parse(data);
+    }
+
+    void parse(std::vector<uint8_t>& data)
+    {
+        if(version_ == 1)
+        {
+        }
+        else if(version_ == 0)
+        {
+        }
+        else
+        {
+            LOG_DEBUG("error version");
+        }
+    }
+
     // 部分字段version=1为64位，version=1为32位
     uint64_t creation_time_;    // 创建时间，version=1为64为，0为32位
     uint64_t modification_time_;// 修改时间
@@ -258,8 +304,6 @@ struct MdiaBox:public Box
     {
     }
 };
-
-
 
 // mdhd 和 tkhd ，内容大致都是一样的。不过tkhd 通常是对指定的 track 设定相关属性和内容。而 mdhd 是针对于独立的 media 来设置的。不过两者一般都是一样的。
 // version: box版本，0或1，一般为0。
@@ -436,22 +480,22 @@ struct SttsBox:public FullBox
     SttsBox(uint32_t box_size):FullBox(BoxType::STTS, box_size, 0)
     {
     }
-    SttsBox(uint32_t box_size, std::vector<uint8_t> data): FullBox(BoxType::STTS, box_size, data)
+    SttsBox(uint32_t box_size, std::vector<uint8_t>& data): FullBox(BoxType::STTS, box_size, data)
     {
-        //entry_count_ = ShowU32(data.data() + parse_len_);
-        //LOG_DEBUG("stts entry_count_:{}", entry_count_);
+        entry_count_ = ShowU32(data.data() + parse_len_);
+        LOG_DEBUG("stts entry_count_:{}", entry_count_);
         parse_len_ += 4;
-        /*
         for(auto i = 0; i < entry_count_; ++i)
         {
             Entry* entry = new Entry();
             entry->sample_count_ = ShowU32(data.data() + parse_len_);
+            LOG_DEBUG("sample count:{}", entry->sample_count_);
             parse_len_ += 4;
             entry->sample_delta_ = ShowU32(data.data() + parse_len_);
+            LOG_DEBUG("sample delta:{}", entry->sample_delta_);
             parse_len_ += 4;
             entrys_.push_back(entry);
         }
-        */
     }
     uint32_t entry_count_;
     std::vector<Entry*> entrys_;
@@ -537,9 +581,23 @@ struct StsdBox: public FullBox
 // container : stbl
 struct StszBox:public FullBox
 {
-    StszBox(uint32_t box_size):FullBox(BoxType::STSZ, box_size, 0)
+    StszBox(uint32_t box_size, std::vector<uint8_t>& data):FullBox(BoxType::STSZ, box_size, data)
     {
-
+        parse(data);
+    }
+    void parse(std::vector<uint8_t>& data)
+    {
+        sample_size_ = ShowU32(data.data() + parse_len_);
+        parse_len_ += 4;
+        sample_count_ = ShowU32(data.data() + parse_len_);
+        parse_len_ += 4;
+        uint32_t size;
+        for(auto i=0; i< sample_count_; ++i)
+        {
+            size = ShowU32(data.data() + parse_len_);
+            parse_len_ += 4;
+            entry_size_.push_back(size);
+        }
     }
     uint32_t sample_size_;
     uint32_t sample_count_;
@@ -548,24 +606,66 @@ struct StszBox:public FullBox
     // {
     //  uint32_t entry_size;
     // }
-    uint32_t* entry_size_;
+    //uint32_t* entry_size_;
+    std::vector<uint32_t> entry_size_;
 };
 
 // container : stbl
 struct Stz2Box:public FullBox
 {
-    Stz2Box(uint32_t box_size):FullBox(BoxType::STZ2, box_size, 0)
+    Stz2Box(uint32_t box_size, std::vector<uint8_t>& data):FullBox(BoxType::STZ2, box_size, data)
     {
-
+        parse(data);
+    }
+    void parse(std::vector<uint8_t>& data)
+    {
+        //sample_size_ = ShowU32(data.data() + parse_len_);
+        ShowU24(data.data() + parse_len_);
+        parse_len_ += 3;
+        filed_size_ = ShowU8(data.data() + parse_len_); // values 4,8,16
+        parse_len_ += 1;
+        sample_count_ = ShowU32(data.data() + parse_len_);
+        parse_len_ += 4;
+        uint16_t size;
+        for(auto i=0; i< sample_count_; ++i)
+        {
+            size = ShowU32(data.data() + parse_len_);
+            parse_len_ += 4;
+            entry_size_.push_back(size);
+            if(filed_size_ == 4)
+            {
+                size = ShowU8(data.data() + parse_len_);
+                parse_len_ += 1;
+                entry_size_.push_back(size);
+                ++i;    // 注意只有4个位，一次拷贝了两个
+            }
+            else if(filed_size_ == 8)
+            {
+                size = ShowU8(data.data() + parse_len_);
+                parse_len_ += 1;
+                entry_size_.push_back(size);
+            }
+            else if(filed_size_ == 16)
+            {
+                size = ShowU16(data.data() + parse_len_);
+                parse_len_ += 2;
+                entry_size_.push_back(size); 
+            }
+            else
+            {
+                LOG_DEBUG("invalid filed_size_:{}", filed_size_);
+            }
+        }
     }
     uint8_t reserved_[3] = {0};
-    uint8_t file_size_;
+    uint8_t filed_size_;    // 只有4/8/16三种情况
     uint32_t sample_count_;
     // for(i =0; i< sample_count_; ++i)
     // {
     //      unsigned int(field_size) entry_size;
     // }
-    uint32_t* entry_size_;
+    //uint32_t* entry_size_;
+    std::vector<uint16_t> entry_size_;
 };
 
 struct SampleToChunk
@@ -582,58 +682,58 @@ struct StscBox:public FullBox
     StscBox(uint32_t box_size):FullBox(BoxType::STSC, box_size, 0)
     {
     }
+    StscBox(uint32_t box_size, std::vector<uint8_t>& data):FullBox(BoxType::STSC, box_size, data)
+    {
+        parse(data);
+    }
+    void parse(std::vector<uint8_t>& data)
+    {
+        entry_count_ = ShowU32(data.data() + parse_len_);
+        parse_len_ += 4;
+        LOG_DEBUG("entry count:{}", entry_count_);
+        SampleToChunk sampleToChunk;
+        for(auto i=0; i< entry_count_; ++i)
+        {
+            sampleToChunk.first_chunk_ = ShowU32(data.data() + parse_len_);
+            parse_len_ += 4;
+            sampleToChunk.samples_per_chunk_ = ShowU32(data.data() + parse_len_);
+            parse_len_ += 4;
+            sampleToChunk.samples_description_index_ = ShowU32(data.data() + parse_len_);
+            parse_len_ += 4;
+            entry_.push_back(sampleToChunk);
+        }
+    }
     uint32_t entry_count_;
     // for(i =1; i<= entry_count_; ++i)
     // {
     //      SampleToChunk;
     // }
-    SampleToChunk * entry_;
+    //SampleToChunk * entry_;
+    std::vector<SampleToChunk> entry_;
 };
 
 // container:stbl
 // chunk offset box
 struct StcoBox:public FullBox
 {
-    StcoBox(uint32_t box_size):FullBox(BoxType::STCO, box_size, 0)
+    StcoBox(uint32_t box_size, std::vector<uint8_t>& data):
+        FullBox(BoxType::STCO, box_size, data)
     {
-
+        parse(data);
     }
-    uint32_t entry_count_;
-    // for(i =1; i<= entry_count_; ++i)
-    // {
-    //      chunk_offset_;
-    // }
-    uint32_t* chunk_offset_;
-};
-
-// container:stbl
-// chunk offset box
-struct Co64Box:public FullBox
-{
-    Co64Box(uint32_t box_size):FullBox(BoxType::CO64, box_size, 0)
-    {
-
-    }
-    uint32_t entry_count_;
-    // for(i =1; i<= entry_count_; ++i)
-    // {
-    //      chunk_offset_;
-    // }
-    uint64_t* chunk_offset_;
-};
-
-// container:stbl
-struct StssBox:public FullBox
-{
-    StssBox(uint32_t box_size):FullBox(BoxType::STSS, box_size, 0)
-    {
-    };
-    StssBox(uint32_t box_size, std::vector<uint8_t> data): FullBox(BoxType::STSS, box_size, data)
+    void parse(std::vector<uint8_t>& data)
     {
         entry_count_ = ShowU32(data.data() + parse_len_);
         parse_len_ += 4;
+        LOG_DEBUG("entry count:{}", entry_count_);
+        uint32_t offset;
         for(auto i = 0; i < entry_count_; ++i)
-        { 
+        {
+            offset = ShowU32(data.data() + parse_len_);
+            // 这里暂时先不打印，打印出来太多了
+            //LOG_DEBUG("sample number:{}", sample_number);
+            chunk_offset_.push_back(offset);
+            parse_len_ += 4;
         }
     }
     uint32_t entry_count_;
@@ -641,7 +741,75 @@ struct StssBox:public FullBox
     // {
     //      chunk_offset_;
     // }
-    uint32_t* sample_number_;
+    //uint32_t* chunk_offset_;
+    std::vector<uint32_t> chunk_offset_;
+};
+
+// container:stbl
+// chunk offset box
+struct Co64Box:public FullBox
+{
+    Co64Box(uint32_t box_size, std::vector<uint8_t> &data):
+        FullBox(BoxType::CO64, box_size, data)
+    {
+        parse(data);
+    }
+    void parse(std::vector<uint8_t>& data)
+    {
+        entry_count_ = ShowU32(data.data() + parse_len_);
+        parse_len_ += 4;
+        LOG_DEBUG("entry count:{}", entry_count_);
+        uint64_t offset;
+        for(auto i = 0; i < entry_count_; ++i)
+        {
+            offset = ShowU32(data.data() + parse_len_);
+            // 这里暂时先不打印，打印出来太多了
+            //LOG_DEBUG("sample number:{}", sample_number);
+            chunk_offset_.push_back(offset);
+            parse_len_ += 8;
+        }
+    }
+    uint32_t entry_count_;
+    // for(i =1; i<= entry_count_; ++i)
+    // {
+    //      chunk_offset_;
+    // }
+    //uint64_t* chunk_offset_;
+    std::vector<uint64_t> chunk_offset_;
+};
+
+// container:stbl
+// 没有说明每一个sample都时关键帧，一般音频没有这个box
+struct StssBox:public FullBox
+{
+    StssBox(uint32_t box_size):FullBox(BoxType::STSS, box_size, 0)
+    {
+    };
+    StssBox(uint32_t box_size, std::vector<uint8_t>& data): FullBox(BoxType::STSS, box_size, data)
+    {
+        entry_count_ = ShowU32(data.data() + parse_len_);
+        parse_len_ += 4;
+        LOG_DEBUG("entry count:{}", entry_count_);
+        uint32_t sample_number;
+        for(auto i = 0; i < entry_count_; ++i)
+        {
+            sample_number = ShowU32(data.data() + parse_len_);
+            // 这里暂时先不打印，打印出来太多了
+            //LOG_DEBUG("sample number:{}", sample_number);
+            sample_number_.push_back(sample_number);
+            parse_len_ += 4;
+        }
+    }
+    void parse()
+    { 
+    }
+    uint32_t entry_count_;
+    // for(i =1; i<= entry_count_; ++i)
+    // {
+    //      chunk_offset_;
+    // }
+    //uint32_t* sample_number_;
+    std::vector<uint32_t> sample_number_;
 };
 
 struct StshEntry
@@ -706,7 +874,7 @@ struct PadbBox:public FullBox
 // container：file or other box
 struct FreeBox: public Box
 {
-    FreeBox(uint32_t box_size):Box(BoxType::FREE, box_size)
+    FreeBox(uint32_t box_size, std::vector<uint8_t>& data):Box(BoxType::FREE, box_size, data)
     {
     }
     uint8_t * data_;
@@ -745,12 +913,17 @@ class Mp4File
 
         // 读取box的数据，不包含box_type和box_size
         bool read_box_data(uint32_t box_size, std::vector<uint8_t>& data);
+        
+        // 根据时间获取文件偏移
+        uint32_t getOffset(double duration);
 
     public:
         std::string file_name_;
         std::fstream fs_;
         std::map<int, Box*> boxes_;
         size_t file_size_;
+        std::map<int, Box*> video_trak_;
+        std::map<int, Box*> audio_trak_;
 };
 
 #endif  // MP4PARSER_H_

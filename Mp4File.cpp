@@ -82,7 +82,7 @@ int Mp4File::parse()
     uint32_t box_type = 0;
     int depth = 0;
     bool read_res = true;
-    Box* parent_ = nullptr;
+    Box* parent = nullptr;
     std::vector<uint8_t> data;
     while(!fs_.eof())
     {
@@ -101,81 +101,60 @@ int Mp4File::parse()
                 // todo switch case int
                 case BoxType::FTYP:
                 {
-                    parent_ = nullptr;
                     read_box_data(box_size, data);
                     // 解析完header
-                    FtypBox* box = new FtypBox(box_size);
-                    // 解析box
-                    box->parse(data);
-                    LOG_DEBUG("major_band_:{}", intToStr(box->major_band_));
-                    LOG_DEBUG("minor version:{}", intToStr(box->minor_version_));
-                    LOG_DEBUG("compatible_brands_:{}",intToStr(box->compatible_brands_));
+                    FtypBox* box = new FtypBox(box_size, data);
                     boxes_[box_type] = box;
                     break;
                 }
                 case BoxType::FREE:
                 {
                     read_box_data(box_size, data);
-                    parent_ = nullptr;
+                    FreeBox* box = new FreeBox(box_size, data);
+                    boxes_[box_type] = box;
                     break;
                 }
                 case BoxType::MDAT:
                 {
                     read_box_data(box_size, data);
-                    parent_ = nullptr;
+                    parent = nullptr;
                     break;
                 }
                 case BoxType::PDIN:
                 {
                     read_box_data(box_size, data);
-                    parent_ = nullptr;
+                    parent = nullptr;
                     break;
                 }
                 case BoxType::MOOF:
                 {
                     read_box_data(box_size, data);
-                    parent_ = nullptr;
+                    parent = nullptr;
                     break;
                 }
                 case BoxType::MFRA:
                 {
                     read_box_data(box_size, data);
-                    parent_ = nullptr;
+                    parent = nullptr;
                     break;
                 }
                 case BoxType::SKIP:
                 {
                     read_box_data(box_size, data);
-                    parent_ = nullptr;
+                    parent = nullptr;
                     break;
                 }
                 case BoxType::MOOV:
                 {
-                    parent_ = nullptr;
                     MoovBox* moovBox = new MoovBox(box_size);
                     boxes_[box_type] = moovBox;
-                    parent_ = moovBox;
+                    parent = moovBox;
                     // 解析完所有的数据
                     break;
                 }
                 case BoxType::MVHD:
                 {
-                    // 分配足够的内存
-                    data.reserve(box_size - 8);
-                    // 读取box body
-                    fs_.read((char*)data.data(), box_size - 8);
-                    /*
-                    MvhdBox box;
-                    parse_len += (moov_box_size - 8);
-                    // 这也时container box
-                    // 继续解析
-                    box_size = ShowU32((unsigned char*)moovBox.data() + parse_len);
-                    std::cout << "mvhd box size:" << box_size << std::endl;
-                    parse_len += 4;
-                    memcpy(box_type, moovBox.data() + parse_len, 4);
-                    parse_len += 4;
-                    std::cout << "mvhd container box:" << box_type << std::endl;
-                    */
+                    read_box_data(box_size, data);
                     break;
                 }
                 case BoxType::TRAK:
@@ -212,7 +191,13 @@ int Mp4File::parse()
                 {
                     read_res = read_box_data(box_size, data);
                     LOG_DEBUG("read res:{} stts box_size:{} data size:{}", read_res, box_size, data.size());
-                    //SttsBox* box = new SttsBox(box_size, data);
+                    SttsBox* box = new SttsBox(box_size, data);
+                    break;
+                }
+                case BoxType::STSS:
+                {
+                    read_box_data(box_size, data);
+                    StssBox* box = new StssBox(box_size, data);
                     break;
                 }
                 case BoxType::MDHD:
@@ -234,5 +219,11 @@ int Mp4File::parse()
         }
     }
     return 0;
+}
+
+// 根据时间获取文件偏移
+uint32_t Mp4File::getOffset(double duration)
+{
+
 }
 
