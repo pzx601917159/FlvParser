@@ -3,8 +3,8 @@
 	> Author: pzx
 	> Created Time: 2019年03月04日 星期一 14时09分32秒
 ************************************************************************/
-#ifndef MP4PARSER_H_
-#define MP4PARSER_H_
+#ifndef MP4FILE_H_
+#define MP4FILE_H_
 #include <cinttypes>
 #include <string>
 #include <vector>
@@ -70,12 +70,15 @@ static std::string uint32ToString(uint32_t boxType)
 // 按照mp4 pdf文件时先
 struct Box
 {
+    
+
     Box(uint32_t box_type, uint32_t box_size, uint8_t extend_type[16] = {})
     {
         parent_ = nullptr;
         size_ = box_size;
         type_ = box_type;
         parse_len_ = 0;
+        //LOG_DEBUG("handler_type_:{}", pre_defined_);
     }
 
     Box(uint32_t box_type, uint32_t box_size, std::vector<uint8_t>& data)
@@ -86,33 +89,32 @@ struct Box
         parse(data);
     }
 
-    void setParent(Box* parent)
-    {
-        parent_ = parent;
-    }
-    
     uint8_t parseU8(std::vector<uint8_t>& data)
     {
+        uint8_t ret = ShowU8(data.data() + parse_len_);
         parse_len_ += sizeof(uint8_t);
-        return ShowU8(data.data() + parse_len_);
+        return ret;
     }
 
     uint16_t parseU16(std::vector<uint8_t>& data)
     {
+        uint16_t ret = ShowU16(data.data() + parse_len_);
         parse_len_ += sizeof(uint16_t);
-        return ShowU16(data.data() + parse_len_);
+        return ret;
     }
 
     uint32_t parseU32(std::vector<uint8_t>& data)
     {
+        uint32_t ret = ShowU32(data.data() + parse_len_);
         parse_len_ += sizeof(uint32_t);
-        return ShowU32(data.data() + parse_len_);
+        return ret;
     }
 
     uint64_t parseU64(std::vector<uint8_t>& data)
     {
+        uint64_t ret = ShowU64(data.data() + parse_len_);
         parse_len_ += sizeof(uint64_t);
-        return ShowU64(data.data() + parse_len_);
+        return ret;
     }
 
     // 解析并释放数据
@@ -129,13 +131,22 @@ struct Box
             parse_len_ += sizeof(extend_type_);
         }
     }
+
+    void set_parent(Box* box)
+    {
+        this->parent_ = box;
+        if(box != nullptr)
+        {
+            box->children_.push_back(this);
+        }
+    }
     uint32_t size_;
     uint32_t type_;
     uint32_t large_size_;   // if size==1,large_size存在，if size == 0,box extends to end of file,只在mdat中可能用到
     uint8_t extend_type_[16];// if box_type == 'uuid'
     uint32_t parse_len_;
     // 子box
-    std::map<uint32_t, Box*> children_;
+    std::vector<Box*> children_;
     // 父box
     Box* parent_;
 };
@@ -253,10 +264,19 @@ struct TrakBox:public Box
 
 // version : box版本，0或1，一般为0。
 //flags : 24-bit整数，按位或操作结果值，预定义的值(0x000001 ，track_enabled，表示track是有效的）、(0x000002，track_in_movie，表示该track在播放
-struct TkhdBox : public Box
+struct TkhdBox : public FullBox
 {
-    TkhdBox(uint32_t box_size):Box(BoxType::TKHD, box_size)
+    TkhdBox(uint32_t box_size, std::vector<uint8_t>& data):FullBox(BoxType::TKHD, box_size, data)
     {
+    }
+    void parse(std::vector<uint8_t>& data)
+    {
+        if(version_ == 1)
+        {
+        }
+        else
+        {
+        }
     }
     // 部分字段version=1为64位，version=1为32位
     uint64_t creation_time_;    // 创建时间，version=1为64为，0为32位
@@ -388,20 +408,43 @@ struct MdhdBox:public FullBox
 // container:mdia or meta
 struct HdlrBox:public FullBox
 {
-    HdlrBox(uint32_t box_size):FullBox(BoxType::HDLR, box_size, 0)
+    HdlrBox(uint32_t box_size, std::vector<uint8_t>& data):FullBox(BoxType::HDLR, box_size, data)
     {
-
+        parse(data);
     }
-    uint32_t pre_defined_ = 0;
+    uint32_t pre_defined_ = 0; // 这个就是fullbox中的字段
     uint32_t handler_type_;
     const uint32_t reserved[3] = {0};
     std::string name;
     void parse(std::vector<uint8_t>& data)
     {
-        // 这个时fullbox
-        memcpy(&handler_type_,data.data() + 8, 4);
+        pre_defined_ = parseU32(data);
+        memcpy(&handler_type_, data.data() + parse_len_, 4);
+        LOG_DEBUG("handler_type_:{}", (char*)&handler_type_);
+        parse_len_ += 4;
+        parseU32(data);
+        parseU64(data);
     }
 };
+
+static std::string get_handler_type(Box* box)
+{
+    while(box != nullptr && box->parent_->type_ != BoxType::MDIA)
+    {
+        box = box->parent_;
+    }
+    if(box != nullptr)
+    {
+        for(auto child : box->children_)
+        {
+            if(child->type_ == BoxType::HDLR)
+            {
+                return std::string((char*)&((HdlrBox*)(child))->handler_type_, 4);
+            }
+        }
+    }
+    return "";
+}
 
 // container box
 // container:mdia
@@ -487,24 +530,41 @@ struct SttsBox:public FullBox
         parse_len_ += 4;
         for(auto i = 0; i < entry_count_; ++i)
         {
-            Entry* entry = new Entry();
-            entry->sample_count_ = ShowU32(data.data() + parse_len_);
-            LOG_DEBUG("sample count:{}", entry->sample_count_);
-            parse_len_ += 4;
-            entry->sample_delta_ = ShowU32(data.data() + parse_len_);
-            LOG_DEBUG("sample delta:{}", entry->sample_delta_);
-            parse_len_ += 4;
-            entrys_.push_back(entry);
+            Entry entry;
+            entry.sample_count_ = parseU32(data);
+            LOG_DEBUG("sample count:{}", entry.sample_count_);
+            entry.sample_delta_ = parseU32(data);
+            LOG_DEBUG("sample delta:{}", entry.sample_delta_);
+            entrys_.emplace_back(entry);
         }
     }
+
+    uint32_t get_sample_number(double duration)
+    {
+        uint32_t sample_number = 0;
+        for(auto entry:entrys_)
+        {
+            //LOG_DEBUG("entry_count_:{}", entry->sample_count_);
+            for(uint32_t i = 0; i < entry.sample_count_; ++i)
+            {
+                sample_number += entry.sample_delta_;
+                if(sample_number > duration)
+                {
+                    sample_number -= entry.sample_delta_;
+                    return sample_number;
+                }
+            }
+        }
+        
+    }
     uint32_t entry_count_;
-    std::vector<Entry*> entrys_;
+    std::vector<Entry> entrys_;
 };
 
 // container:stbl
-struct Ctts:public FullBox
+struct CtssBox:public FullBox
 {
-    Ctts(uint32_t box_size):FullBox(BoxType::CTSS, box_size, 0)
+    CtssBox(uint32_t box_size, std::vector<uint8_t>& data):FullBox(BoxType::CTSS, box_size, data)
     {
     }
     uint32_t entry_count_;
@@ -567,14 +627,24 @@ class AudioSampleEntry:public SampleEntry
 // container:stbl
 struct StsdBox: public FullBox
 {
-    StsdBox(uint32_t box_size):FullBox(BoxType::STSD, box_size, 0)
+    StsdBox(uint32_t box_size, std::vector<uint8_t>& data, Box* parent):FullBox(BoxType::STSD, box_size, data)
     {
-
+        set_parent(parent);
+        parse(data);
+    }
+    void parse(std::vector<uint8_t>& data)
+    {
+        i = parseU32(data);
+        LOG_DEBUG("stsd i:{}", i);
+        entry_count_ = parseU32(data);
+        LOG_DEBUG("stsd entry_count_:{}", entry_count_);
+        LOG_DEBUG("stsd handler_type_:{}", get_handler_type(this));
     }
     int i;
     uint32_t entry_count_; // entry的个数
     // 根据handler_type确定时哪种entry
-    SampleEntry** entrys_;
+    // SampleEntry** entrys_;
+    std::vector<SampleEntry*> entrys_;
 };
 
 
@@ -905,6 +975,9 @@ class Mp4File
         // 解析文件
         int parse();
 
+        // 解析box
+        int parse(Box* parent, uint32_t parent_size);
+
         // 获取box type和size
         bool get_box_size_type(uint32_t& box_size, uint32_t& box_type);
 
@@ -915,15 +988,26 @@ class Mp4File
         bool read_box_data(uint32_t box_size, std::vector<uint8_t>& data);
         
         // 根据时间获取文件偏移
-        uint32_t getOffset(double duration);
+        uint32_t get_offset(double duration);
+
+        // 获取video trak
+        Box* get_video_trak();
+        
+        // 通过box类型获取box
+        Box* get_box(BoxType box_type, Box* box);
+
+        // 显示box的结构
+        void show_file();
+
+        // 显示box的结构
+        void show_box(Box* box, int level);
 
     public:
         std::string file_name_;
         std::fstream fs_;
+        // 这里值存粗顶层box
         std::map<int, Box*> boxes_;
         size_t file_size_;
-        std::map<int, Box*> video_trak_;
-        std::map<int, Box*> audio_trak_;
 };
 
-#endif  // MP4PARSER_H_
+#endif  // MP4FILE_H_

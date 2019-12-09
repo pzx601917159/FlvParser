@@ -4,6 +4,8 @@
 	> Created Time: 2019年11月14日 星期四 20时26分31秒
 ************************************************************************/
 
+#pragma once
+
 #include "spdlog/include/spdlog/spdlog.h"
 #include "spdlog/include/spdlog/sinks/basic_file_sink.h"
 

@@ -16,5 +16,8 @@ int main(int argc, char *argv[])
     Mp4File file;
     file.init(argv[1]);
     int ret = file.parse();
+    file.show_file();
+    uint32_t offset = file.get_offset(10);
+    LOG_DEBUG("offset 10:{}", offset);
     return ret;
 }
