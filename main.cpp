@@ -4,7 +4,7 @@
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2)
+    if (argc < 2)
     {
         std::cout << argv[0] <<" [file name]" << std::endl;
         return 0;
@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
     file.init(argv[1]);
     int ret = file.parse();
     file.show_file();
-    uint32_t offset = file.get_offset(10);
-    LOG_DEBUG("offset 10:{}", offset);
+    uint32_t offset = file.get_offset(atoi(argv[2]));
+    LOG_DEBUG("offset {}:{}", argv[2], offset);
     return ret;
 }

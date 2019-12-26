@@ -532,9 +532,9 @@ struct SttsBox:public FullBox
         {
             Entry entry;
             entry.sample_count_ = parseU32(data);
-            LOG_DEBUG("sample count:{}", entry.sample_count_);
+            //LOG_DEBUG("sample count:{}", entry.sample_count_);
             entry.sample_delta_ = parseU32(data);
-            LOG_DEBUG("sample delta:{}", entry.sample_delta_);
+            //LOG_DEBUG("sample delta:{}", entry.sample_delta_);
             entrys_.emplace_back(entry);
         }
     }
@@ -542,20 +542,21 @@ struct SttsBox:public FullBox
     uint32_t get_sample_number(double duration)
     {
         uint32_t sample_number = 0;
+        uint32_t sample = 0;
         for(auto entry:entrys_)
         {
-            //LOG_DEBUG("entry_count_:{}", entry->sample_count_);
+            LOG_DEBUG("sample_number:{}", sample_number);
             for(uint32_t i = 0; i < entry.sample_count_; ++i)
             {
-                sample_number += entry.sample_delta_;
-                if(sample_number > duration)
+                ++sample_number;
+                sample += entry.sample_delta_;
+                if(sample > duration)
                 {
-                    sample_number -= entry.sample_delta_;
                     return sample_number;
                 }
             }
         }
-        
+        return 0;
     }
     uint32_t entry_count_;
     std::vector<Entry> entrys_;
@@ -669,6 +670,24 @@ struct StszBox:public FullBox
             entry_size_.push_back(size);
         }
     }
+    uint32_t get_sample_size(uint32_t sample_number)
+    {
+        if(sample_number < entry_size_.size())
+        {
+            return entry_size_[sample_number];
+        }
+        return 0;
+    }
+    void show_sample_size()
+    {
+        uint32_t idx = 1;
+        for(auto size:entry_size_)
+        {
+            LOG_DEBUG("samplei index:{} size:{}", idx, size);
+            ++idx;
+        }
+    }
+    uint8_t reserved_[3] = {0};
     uint32_t sample_size_;
     uint32_t sample_count_;
     // if sample_size_ == 0;
@@ -727,7 +746,6 @@ struct Stz2Box:public FullBox
             }
         }
     }
-    uint8_t reserved_[3] = {0};
     uint8_t filed_size_;    // 只有4/8/16三种情况
     uint32_t sample_count_;
     // for(i =0; i< sample_count_; ++i)
@@ -740,9 +758,20 @@ struct Stz2Box:public FullBox
 
 struct SampleToChunk
 {
+    public:
+    SampleToChunk()
+    {
+        first_chunk_ = 0;
+        samples_per_chunk_ = 0;
+        samples_description_index_ = 0;
+        chunk_count_ = 0;
+        first_sample_ = 1;
+    }
     uint32_t first_chunk_;
     uint32_t samples_per_chunk_;
     uint32_t samples_description_index_;
+    uint32_t chunk_count_;      // 计算出来的entry包含chunk的数量
+    uint32_t first_sample_;     // 计算出来的这个entry的第一个sample
 };
 
 // container : stbl
@@ -756,34 +785,134 @@ struct StscBox:public FullBox
     {
         parse(data);
     }
+
+    uint32_t get_first_sample(uint32_t chunk_number)
+    {
+        uint32_t first_sample = 0;
+        for(auto entry:entrys_)
+        {
+            for(auto i=0;i<entry.chunk_count_; ++i)
+            {
+                --chunk_number;
+                if(i == 0)
+                {
+                    first_sample = entry.first_sample_;
+                }
+                else
+                {
+                    first_sample += entry.samples_per_chunk_;
+                }
+                if(chunk_number == 0)
+                {
+                    return first_sample;
+                }
+            }
+        }
+    }
+
     void parse(std::vector<uint8_t>& data)
     {
         entry_count_ = ShowU32(data.data() + parse_len_);
         parse_len_ += 4;
-        LOG_DEBUG("entry count:{}", entry_count_);
-        SampleToChunk sampleToChunk;
+        LOG_DEBUG("stsc entry count:{}", entry_count_);
         for(auto i=0; i< entry_count_; ++i)
         {
-            sampleToChunk.first_chunk_ = ShowU32(data.data() + parse_len_);
-            parse_len_ += 4;
-            sampleToChunk.samples_per_chunk_ = ShowU32(data.data() + parse_len_);
-            parse_len_ += 4;
-            sampleToChunk.samples_description_index_ = ShowU32(data.data() + parse_len_);
-            parse_len_ += 4;
-            entry_.push_back(sampleToChunk);
+            SampleToChunk sampleToChunk;
+            sampleToChunk.first_chunk_ = parseU32(data);
+            sampleToChunk.samples_per_chunk_ = parseU32(data);
+            sampleToChunk.samples_description_index_ = parseU32(data);
+            sampleToChunk.chunk_count_ = 0;    // 最后一个的chunk_count_;
+            if(i != 0)
+            {
+                entrys_[i-1].chunk_count_ = 
+                    sampleToChunk.first_chunk_ - entrys_[i-1].first_chunk_;
+                sampleToChunk.first_sample_ = 
+                    entrys_[i-1].first_sample_ + entrys_[i-1].chunk_count_ * entrys_[i-1].samples_per_chunk_;
+                // LOG_DEBUG("prev chunk count:{} prev first_sample:{}", entrys_[i-1].chunk_count_, entrys_[i-1].first_sample_);
+            }
+            /*
+            LOG_DEBUG("first_chunk_:{} samples_per_chunk_:{} samples_description_index_:{}",
+                    sampleToChunk.first_chunk_, sampleToChunk.samples_per_chunk_,
+                    sampleToChunk.samples_description_index_);
+                    */
+            entrys_.push_back(sampleToChunk);
         }
     }
+
+    void set_chunk_count(uint32_t chunk_count)
+    {
+        if(entrys_.empty())
+        {
+            return;
+        }
+        if(entrys_.size() == 1)
+        {
+            entrys_[0].chunk_count_ = chunk_count;
+        }
+        else
+        {
+            entrys_[entrys_.size() - 1].chunk_count_ =
+                chunk_count - entrys_[entrys_.size() - 1].first_chunk_ + 1;
+        }
+    }
+    
+    void show()
+    {
+        LOG_DEBUG("show stsc entrys_ size:{}", entrys_.size());
+        for(auto entry:entrys_)
+        {
+            LOG_DEBUG("first_chunk:{} samples_per_chunk_:{} first_sample_:{}",
+                entry.first_chunk_, entry.samples_per_chunk_, entry.first_sample_);
+        }
+    }
+
+    // 通过sample_number获取chunk number
+    uint32_t get_chunk_number(uint32_t sample_number)
+    {
+        auto it = entrys_.begin();
+        for(; it != entrys_.end(); ++it)
+        {
+            LOG_DEBUG("first sample:{} sample number:{}", it->first_sample_, sample_number);
+            if(it->first_sample_ > sample_number)
+            {
+                LOG_DEBUG("first_chunk_ break:{}", it->first_chunk_);
+                break;
+            }
+        }
+        if(it != entrys_.begin())
+        {
+            --it;
+        }
+        LOG_DEBUG("first_chunk_:{}", it->first_chunk_);
+        uint32_t current_sample_number = it->first_sample_;
+        if(sample_number <= current_sample_number)
+        {
+            return it->first_chunk_;
+        }
+        for(auto i = 1; i < it->chunk_count_; ++i)
+        {
+            current_sample_number += it->samples_per_chunk_;
+            if(sample_number <= current_sample_number)
+            {
+                return it->first_chunk_ + i;
+            }
+        }
+        LOG_DEBUG("get chunk_number failed");
+        return 0;
+    }
+
     uint32_t entry_count_;
     // for(i =1; i<= entry_count_; ++i)
     // {
     //      SampleToChunk;
     // }
     //SampleToChunk * entry_;
-    std::vector<SampleToChunk> entry_;
+    std::vector<SampleToChunk> entrys_;
 };
 
 // container:stbl
 // chunk offset box
+// 通过stco中的chunk_count 得到stsc中的chunk_count
 struct StcoBox:public FullBox
 {
     StcoBox(uint32_t box_size, std::vector<uint8_t>& data):
@@ -791,11 +920,15 @@ struct StcoBox:public FullBox
     {
         parse(data);
     }
+    uint32_t chunk_count()
+    {
+        return entry_count_;
+    }
     void parse(std::vector<uint8_t>& data)
     {
         entry_count_ = ShowU32(data.data() + parse_len_);
         parse_len_ += 4;
-        LOG_DEBUG("entry count:{}", entry_count_);
+        LOG_DEBUG("stco entry count:{}", entry_count_);
         uint32_t offset;
         for(auto i = 0; i < entry_count_; ++i)
         {
@@ -805,6 +938,15 @@ struct StcoBox:public FullBox
             chunk_offset_.push_back(offset);
             parse_len_ += 4;
         }
+    }
+    uint32_t get_chunk_offset(uint32_t chunk_number)
+    {
+        if(chunk_offset_.size() >= chunk_number)
+        {
+            return chunk_offset_[chunk_number - 1];
+        }
+        LOG_DEBUG("get chunk offset error");
+        return -1;
     }
     uint32_t entry_count_;
     // for(i =1; i<= entry_count_; ++i)
@@ -865,11 +1007,25 @@ struct StssBox:public FullBox
         {
             sample_number = ShowU32(data.data() + parse_len_);
             // 这里暂时先不打印，打印出来太多了
-            //LOG_DEBUG("sample number:{}", sample_number);
+            // LOG_DEBUG("sample number:{}", sample_number);
             sample_number_.push_back(sample_number);
             parse_len_ += 4;
         }
     }
+
+    uint32_t get_sync_sample(uint32_t sample_number)
+    {
+        uint32_t prev = 0;
+        for(auto num:sample_number_)
+        {
+            if(sample_number < num)
+            {
+                return prev;
+            }
+            prev = num;
+        }
+    }
+
     void parse()
     { 
     }
@@ -991,10 +1147,12 @@ class Mp4File
         uint32_t get_offset(double duration);
 
         // 获取video trak
-        Box* get_video_trak();
+        Box* get_trak(const std::string& trak_type);
         
         // 通过box类型获取box
         Box* get_box(BoxType box_type, Box* box);
+        
+        void set_chunk_count(const std::string& trak_type);
 
         // 显示box的结构
         void show_file();

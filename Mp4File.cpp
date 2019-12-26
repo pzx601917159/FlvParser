@@ -73,10 +73,33 @@ bool Mp4File::read_box_data(uint32_t box_size, std::vector<uint8_t>& data)
     return true;
 }
 
+
+void Mp4File::set_chunk_count(const std::string& trak_type)
+{
+    // 根据stco设置stsc的chunk_count
+    Box* video_trak = get_trak(trak_type.c_str());
+    StscBox* stsc_box = (StscBox*)get_box(BoxType::STSC, video_trak);
+    if(stsc_box == nullptr)
+    {
+        LOG_DEBUG("there is no stsc box");
+        return;
+    }
+    StcoBox* stco_box = (StcoBox*)get_box(BoxType::STCO, video_trak);
+    if(stsc_box == nullptr)
+    {
+        LOG_DEBUG("there is no stco box");
+        return;
+    }
+    stsc_box->set_chunk_count(stco_box->chunk_count());
+}
+
+
 // 解析文件
 int Mp4File::parse()
 {
     parse(nullptr, file_size_);
+    set_chunk_count("vide");
+    set_chunk_count("soun");
 }
 
 // 解析文件
@@ -103,7 +126,7 @@ int Mp4File::parse(Box* parent, uint32_t parent_size)
             break;
         }
         get_box_size_type(box_size, box_type);
-        LOG_DEBUG("boxtype:{}",uint32ToString(box_type));
+        LOG_DEBUG("boxtype:{} box_size:{}",uint32ToString(box_type), box_size);
         parse_len += 8;
         // 则包含large size
         if(box_size == 1)
@@ -283,8 +306,14 @@ int Mp4File::parse(Box* parent, uint32_t parent_size)
 }
 
 // 获取video trak
-Box* Mp4File::get_video_trak()
+Box* Mp4File::get_trak(const std::string& trak_type)
 {
+    if(trak_type != "vide" &&
+        trak_type != "soun" &&
+        trak_type != "hint")
+    {
+        return nullptr;
+    }
     Box* moov = boxes_[BoxType::MOOV];
     for(auto box : moov->children_)
     {
@@ -299,7 +328,7 @@ Box* Mp4File::get_video_trak()
                     for(auto hdlr:child->children_)
                     {
                         if(hdlr->type_ == BoxType::HDLR &&
-                                !memcmp(&((HdlrBox*)hdlr)->handler_type_, "vide", 4))
+                            !memcmp(&((HdlrBox*)hdlr)->handler_type_, trak_type.c_str(), 4))
                         {
                             LOG_DEBUG("find hdlr box");
                             return box;
@@ -315,8 +344,8 @@ Box* Mp4File::get_video_trak()
 
 Box* Mp4File::get_box(BoxType box_type, Box* box)
 {
-    LOG_DEBUG("find box type:{}",uint32ToString(box->type_));
-    LOG_DEBUG("find box type2:{}",uint32ToString(box_type));
+    // LOG_DEBUG("find box type:{}",uint32ToString(box->type_));
+    // LOG_DEBUG("find box type2:{}",uint32ToString(box_type));
     if(box->type_ == box_type)
     {
         return box;
@@ -339,7 +368,7 @@ uint32_t Mp4File::get_offset(double duration)
     do
     {
         // 1.获取到video_trak
-        TrakBox* video_trak = (TrakBox*)get_video_trak();
+        TrakBox* video_trak = (TrakBox*)get_trak("vide");
         if(video_trak == nullptr)
         {
             LOG_DEBUG("there is no video trak");
@@ -355,9 +384,76 @@ uint32_t Mp4File::get_offset(double duration)
         duration = duration * mdhd_box->timescale_;
         LOG_DEBUG("time scale duration:{}", duration);
         // 3.通过time-to-sample box找到指定track的给定时间之前的第一个sample number
-        SttsBox* stss_box = (SttsBox*)get_box(BoxType::STSS, video_trak);
-        uint32_t sample_number = stss_box->get_sample_number(duration);
+        SttsBox* stts_box = (SttsBox*)get_box(BoxType::STTS, video_trak);
+        if(stts_box == nullptr)
+        {
+            LOG_DEBUG("there is no stts box");
+            break;
+        }
+        uint32_t sample_number = stts_box->get_sample_number(duration);
         LOG_DEBUG("prev sample number:{}", sample_number);
+
+        // 4.通过sync sample table查询sample number之前的第一个sync sample。对应为795的sample
+        StssBox* stss_box = (StssBox*)get_box(BoxType::STSS, video_trak);
+        if(stss_box == nullptr)
+        {
+            LOG_DEBUG("there is no stss box");
+            break;
+        }
+        uint32_t sync_sample = stss_box->get_sync_sample(sample_number);
+        LOG_DEBUG("sync sample:{}", sync_sample);
+
+        // 5.通过sample-to-chunk table查找到对应的chunk number
+        StscBox* stsc_box = (StscBox*)get_box(BoxType::STSC, video_trak);
+        if(stsc_box == nullptr)
+        {
+            LOG_DEBUG("there is no stsc box");
+            break;
+        }
+        stsc_box->show();
+        uint32_t chunk_number = stsc_box->get_chunk_number(sync_sample);
+        LOG_DEBUG("chunk number:{}", chunk_number);
+
+        // 6.通过chunk offset box查找到对应chunk在文件中的起始偏移量
+        StcoBox* stco_box = (StcoBox*)get_box(BoxType::STCO, video_trak);
+        if(stco_box == nullptr)
+        {
+            LOG_DEBUG("there is no stco box");
+            break;
+        }
+        uint32_t chunk_offset = stco_box->get_chunk_offset(chunk_number);
+        LOG_DEBUG("chunk_offset:{}", chunk_offset);
+
+        // 7. 获取sample的offset
+        // 1).获取这个sample时这个chunk的第几个sample，如果时第一个就不用算了
+        // 2).如果不是第一个sample，获取前几个sample的大小
+        StszBox* stsz_box = (StszBox*)get_box(BoxType::STSZ, video_trak);
+        if(stsz_box == nullptr)
+        {
+            LOG_DEBUG("there is no stco box");
+            break;
+        }
+        // stsz_box->show_sample_size();
+        uint32_t sample_offset = 0;
+        if(stsc_box->get_first_sample(chunk_number) == sync_sample)
+        {
+            LOG_DEBUG("sample offset = chunk offset");
+            offset = chunk_offset;
+        }
+        else
+        {
+            LOG_DEBUG("sample offset != chunk offset");
+            // 计算前面几个sample的大小
+            uint32_t prev_sample_size = 0;
+            for(auto i = stsc_box->get_first_sample(chunk_number);
+                    i < sync_sample; ++i)
+            {
+                prev_sample_size += stsz_box->get_sample_size(i); 
+            }
+            offset = chunk_offset + prev_sample_size;
+        }
+
+        LOG_DEBUG("sample offset:{}", offset);
     }while(0);
     return offset;
 }
@@ -369,7 +465,7 @@ void Mp4File::show_box(Box* box, int level)
     {
         str.append("----");
     }
-    LOG_INFO("{}box type:{}", str, uint32ToString(box->type_));
+    LOG_INFO("{}box type:{} box size:{}", str, uint32ToString(box->type_), box->size_);
     for(auto child:box->children_)
     {
         show_box(child, level + 1);
